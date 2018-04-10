@@ -26,11 +26,16 @@
 #include <asm/tlbflush.h>
 #include "internal.h"
 
+#if defined(CONFIG_ZSWAP)
+extern u64 zswap_pool_pages;
+extern atomic_t zswap_stored_pages;
+#endif
+
 #define SEQ_PUT_DEC(str, val) \
 		seq_put_decimal_ull_width(m, str, (val) << (PAGE_SHIFT-10), 8)
 void task_mem(struct seq_file *m, struct mm_struct *mm)
 {
-	unsigned long text, lib, swap, anon, file, shmem;
+	unsigned long text, lib, swap, ptes, pmds, anon, file, shmem;
 	unsigned long hiwater_vm, total_vm, hiwater_rss, total_rss;
 
 	anon = get_mm_counter(mm, MM_ANONPAGES);
@@ -51,12 +56,11 @@ void task_mem(struct seq_file *m, struct mm_struct *mm)
 	if (hiwater_rss < mm->hiwater_rss)
 		hiwater_rss = mm->hiwater_rss;
 
-	/* split executable areas between text and lib */
-	text = PAGE_ALIGN(mm->end_code) - (mm->start_code & PAGE_MASK);
-	text = min(text, mm->exec_vm << PAGE_SHIFT);
-	lib = (mm->exec_vm << PAGE_SHIFT) - text;
-
+	text = (PAGE_ALIGN(mm->end_code) - (mm->start_code & PAGE_MASK)) >> 10;
+	lib = (mm->exec_vm << (PAGE_SHIFT-10)) - text;
 	swap = get_mm_counter(mm, MM_SWAPENTS);
+	ptes = PTRS_PER_PTE * sizeof(pte_t) * atomic_long_read(&mm->nr_ptes);
+	pmds = PTRS_PER_PMD * sizeof(pmd_t) * mm_nr_pmds(mm);
 	SEQ_PUT_DEC("VmPeak:\t", hiwater_vm);
 	SEQ_PUT_DEC(" kB\nVmSize:\t", total_vm);
 	SEQ_PUT_DEC(" kB\nVmLck:\t", mm->locked_vm);
@@ -73,7 +77,9 @@ void task_mem(struct seq_file *m, struct mm_struct *mm)
 	seq_put_decimal_ull_width(m,
 		    " kB\nVmLib:\t", lib >> 10, 8);
 	seq_put_decimal_ull_width(m,
-		    " kB\nVmPTE:\t", mm_pgtables_bytes(mm) >> 10, 8);
+		    " kB\nVmPTE:\t", ptes >> 10, 8);
+	seq_put_decimal_ull_width(m,
+		    " kB\nVmPMD:\t", pmds >> 10, 8);
 	SEQ_PUT_DEC(" kB\nVmSwap:\t", swap);
 	seq_puts(m, " kB\n");
 	hugetlb_report_usage(m, mm);
@@ -331,18 +337,15 @@ static void show_vma_header_prefix(struct seq_file *m,
 				   dev_t dev, unsigned long ino)
 {
 	seq_setwidth(m, 25 + sizeof(void *) * 6 - 1);
-	seq_put_hex_ll(m, NULL, start, 8);
-	seq_put_hex_ll(m, "-", end, 8);
-	seq_putc(m, ' ');
-	seq_putc(m, flags & VM_READ ? 'r' : '-');
-	seq_putc(m, flags & VM_WRITE ? 'w' : '-');
-	seq_putc(m, flags & VM_EXEC ? 'x' : '-');
-	seq_putc(m, flags & VM_MAYSHARE ? 's' : 'p');
-	seq_put_hex_ll(m, " ", pgoff, 8);
-	seq_put_hex_ll(m, " ", MAJOR(dev), 2);
-	seq_put_hex_ll(m, ":", MINOR(dev), 2);
-	seq_put_decimal_ull(m, " ", ino);
-	seq_putc(m, ' ');
+	seq_printf(m, "%08lx-%08lx %c%c%c%c %08llx %02x:%02x %lu ",
+		   start,
+		   end,
+		   flags & VM_READ ? 'r' : '-',
+		   flags & VM_WRITE ? 'w' : '-',
+		   flags & VM_EXEC ? 'x' : '-',
+		   flags & VM_MAYSHARE ? 's' : 'p',
+		   pgoff,
+		   MAJOR(dev), MINOR(dev), ino);
 }
 
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
@@ -515,7 +518,6 @@ struct mem_size_stats {
 	unsigned long private_dirty;
 	unsigned long referenced;
 	unsigned long anonymous;
-	unsigned long lazyfree;
 	unsigned long anonymous_thp;
 	unsigned long shmem_thp;
 	unsigned long swap;
@@ -534,11 +536,8 @@ static void smaps_account(struct mem_size_stats *mss, struct page *page,
 	int i, nr = compound ? 1 << compound_order(page) : 1;
 	unsigned long size = nr * PAGE_SIZE;
 
-	if (PageAnon(page)) {
+	if (PageAnon(page))
 		mss->anonymous += size;
-		if (!PageSwapBacked(page) && !dirty && !PageDirty(page))
-			mss->lazyfree += size;
-	}
 
 	mss->resident += size;
 	/* Accumulate the size in pages that have been accessed. */
@@ -766,9 +765,8 @@ static void show_smap_vma_flags(struct seq_file *m, struct vm_area_struct *vma)
 		if (!mnemonics[i][0])
 			continue;
 		if (vma->vm_flags & (1UL << i)) {
-			seq_putc(m, mnemonics[i][0]);
-			seq_putc(m, mnemonics[i][1]);
-			seq_putc(m, ' ');
+			seq_printf(m, "%c%c ",
+				   mnemonics[i][0], mnemonics[i][1]);
 		}
 	}
 	seq_putc(m, '\n');
@@ -912,10 +910,9 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 		SEQ_PUT_DEC(" kB\nSwap:           ", mss->swap);
 		SEQ_PUT_DEC(" kB\nSwapPss:        ",
 						mss->swap_pss >> PSS_SHIFT);
-		SEQ_PUT_DEC(" kB\nLocked:         ", mss->pss_locked >> PSS_SHIFT);
+		SEQ_PUT_DEC(" kB\nLocked:         ", mss->pss >> PSS_SHIFT);
 		seq_puts(m, " kB\n");
 	}
-
 	if (!rollup_mode) {
 		arch_show_smap(m, vma);
 		show_smap_vma_flags(m, vma);
@@ -1227,11 +1224,8 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 					goto out_mm;
 				}
 				for (vma = mm->mmap; vma; vma = vma->vm_next) {
-					vm_write_begin(vma);
-					WRITE_ONCE(vma->vm_flags,
-						vma->vm_flags & ~VM_SOFTDIRTY);
+					vma->vm_flags &= ~VM_SOFTDIRTY;
 					vma_set_page_prot(vma);
-					vm_write_end(vma);
 				}
 				downgrade_write(&mm->mmap_sem);
 				break;
