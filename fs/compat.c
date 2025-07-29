@@ -1060,10 +1060,12 @@ COMPAT_SYSCALL_DEFINE3(getdents, unsigned int, fd,
 	f = fdget_pos(fd);
 	if (!f.file)
 		return -EBADF;
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH                                                                                     buf.sb = f.file->f_inode->i_sb;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH                                                                                     
+		buf.sb = f.file->f_inode->i_sb;
         inode = f.file->f_path.dentry->d_inode;
         if (f.file->f_path.dentry && inode) {
-                if (susfs_is_base_dentry_android_data_dir(f.file->f_path.dentry))                                            {
+                if (susfs_is_base_dentry_android_data_dir(f.file->f_path.dentry))
+				{
                         buf.is_base_dentry_android_data_root_dir = true;
                         buf.is_base_dentry_sdcard_root_dir = false;
                         goto orig_flow;
