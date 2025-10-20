@@ -20,6 +20,7 @@
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 #include <linux/susfs_def.h>
 #endif
+#include <linux/pkeys.h>
 
 #include <asm/elf.h>
 #include <asm/uaccess.h>
