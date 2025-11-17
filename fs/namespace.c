@@ -25,6 +25,7 @@
 #include <linux/magic.h>
 #include <linux/bootmem.h>
 #include <linux/task_work.h>
+#include <linux/fslog.h>
 #include "pnode.h"
 #include "internal.h"
 
@@ -131,7 +132,6 @@ static inline struct hlist_head *mp_hash(struct dentry *dentry)
  * allocation is serialized by namespace_sem, but we need the spinlock to
  * serialize with freeing.
  */
-
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 // Our own mnt_alloc_id() that assigns mnt_id starting from DEFAULT_SUS_MNT_ID
 static int susfs_mnt_alloc_id(struct mount *mnt)
@@ -325,6 +325,17 @@ static struct mount *alloc_vfsmnt(const char *name)
 			}
 			goto bypass_orig_flow;
 		}
+#endif
+		err = mnt_alloc_id(mnt);
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+bypass_orig_flow:
+#endif
+		if (err)
+			goto out_free_cache;
+#ifdef CONFIG_RKP_NS_PROT
+		err = mnt_alloc_vfsmount(mnt);
+		if (err)
+			goto out_free_cache;
 #endif
 		err = mnt_alloc_id(mnt);
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
@@ -1177,6 +1188,9 @@ static struct mount *clone_mnt(struct mount *old, struct dentry *root,
 	struct super_block *sb = old->mnt.mnt_sb;
 	struct mount *mnt;
 	int err;
+#ifdef CONFIG_RKP_NS_PROT
+	int nsflags;
+#endif
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	bool is_current_ksu_domain = susfs_is_current_ksu_domain();
 	bool is_current_zygote_domain = susfs_is_current_zygote_domain();
@@ -3167,8 +3181,8 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 	else if (flags & MS_MOVE)
 		retval = do_move_mount(&path, dev_name);
 	else
-		retval = do_new_mount(&path, type_page, flags, mnt_flags,
-					dev_name, data_page);
+		retval = do_new_mount(&path, type_page, sb_flags, mnt_flags,
+				      dev_name, data_page);
 #ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
 	// For both Legacy and Magic Mount KernelSU
 	if (!retval && susfs_is_auto_add_sus_ksu_default_mount_enabled &&
