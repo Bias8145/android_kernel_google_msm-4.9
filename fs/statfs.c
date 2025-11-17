@@ -7,6 +7,7 @@
 #include <linux/statfs.h>
 #include <linux/security.h>
 #include <linux/uaccess.h>
+
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 #include <linux/susfs_def.h>
 #include "mount.h"
@@ -74,7 +75,7 @@ int vfs_statfs(struct path *path, struct kstatfs *buf)
 	struct mount *mnt;
 
 	mnt = real_mount(path->mnt);
-	if (likely(susfs_is_current_non_root_user_app_proc())) {
+	if (likely(susfs_is_current_proc_umounted())) {
 		for (; mnt->mnt_id >= DEFAULT_SUS_MNT_ID; mnt = mnt->mnt_parent) {}
 	}
 	error = statfs_by_dentry(mnt->mnt.mnt_root, buf);

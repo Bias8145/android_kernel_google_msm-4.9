@@ -21,15 +21,6 @@
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
 
-/**
- * generic_fillattr - Fill in the basic attributes from the inode struct
- * @inode: Inode to use as the source
- * @stat: Where to fill in the attributes
- *
- * Fill in the basic attributes in the kstat structure from data that's to be
- * found on the VFS inode structure.  This is the default if no getattr inode
- * operation is supplied.
- */
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 extern void susfs_sus_ino_for_generic_fillattr(unsigned long ino, struct kstat *stat);
 #endif
@@ -37,7 +28,7 @@ extern void susfs_sus_ino_for_generic_fillattr(unsigned long ino, struct kstat *
 void generic_fillattr(struct inode *inode, struct kstat *stat)
 {
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-	if (likely(susfs_is_current_non_root_user_app_proc()) &&
+	if (likely(susfs_is_current_proc_umounted()) &&
 			unlikely(inode->i_mapping->flags & BIT_SUS_KSTAT)) {
 		susfs_sus_ino_for_generic_fillattr(inode->i_ino, stat);
 		stat->mode = inode->i_mode;
