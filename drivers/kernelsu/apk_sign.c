@@ -314,7 +314,9 @@ static struct kernel_param_ops expected_size_ops = {
 module_param_cb(ksu_debug_manager_uid, &expected_size_ops,
 		&ksu_debug_manager_uid, S_IRUSR | S_IWUSR);
 
-#else
+#endif
+
+#ifdef CONFIG_KSU_SWITCH_MANAGER
 
 static int set_expected_size(const char *val, const struct kernel_param *kp)
 {
@@ -363,7 +365,7 @@ module_param_cb(expected_manager_hash, &expected_hash_ops, &expected_manager_has
 
 #endif
 
-bool ksu_is_manager_apk(char *path)
+bool is_manager_apk(char *path)
 {
 	int tries = 0;
 
@@ -385,14 +387,11 @@ bool ksu_is_manager_apk(char *path)
 	pr_info("%s: expected size: %u, expected hash: %s\n",
 		path, expected_manager_size, expected_manager_hash);
 
-#ifdef CONFIG_KSU_DEBUG
-	return check_v2_signature(path, EXPECTED_MANAGER_SIZE, EXPECTED_MANAGER_HASH);
-#else 
 	return (check_v2_signature(path, expected_manager_size, expected_manager_hash)
+	|| check_v2_signature(path, EXPECTED_WILD_NEXT_SIZE, EXPECTED_WILD_NEXT_HASH) // WildKernels/Wild_KSU
+	|| check_v2_signature(path, EXPECTED_RSUNTK_SIZE, EXPECTED_RSUNTK_HASH) // rsuntk/KernelSU
 	|| check_v2_signature(path, 0x363, "4359c171f32543394cbc23ef908c4bb94cad7c8087002ba164c8230948c21549") // backslashxx/KernelSU
 	|| check_v2_signature(path, 384, "7e0c6d7278a3bb8e364e0fcba95afaf3666cf5ff3c245a3b63c8833bd0445cc4")  // 5ec1cff/KernelSU
-	|| check_v2_signature(path, 0x396, "f415f4ed9435427e1fdf7f1fccd4dbc07b3d6b8751e4dbcec6f19671f427870b")  // rsuntk/KernelSU
 	|| check_v2_signature(path, 0x35c, "947ae944f3de4ed4c21a7e4f7953ecf351bfa2b36239da37a34111ad29993eef")  // ShirkNeko/SukiSU-Ultra
 	);
-#endif
 }
