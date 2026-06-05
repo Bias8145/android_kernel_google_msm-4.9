@@ -47,7 +47,23 @@
 
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 extern bool susfs_is_inode_sus_path(struct inode *inode);
+extern bool susfs_is_sus_path_ino(dev_t s_dev, unsigned long ino);
 extern const struct qstr susfs_fake_qstr_name;
+
+static inline bool susfs_check_and_heal_inode(struct inode *inode)
+{
+    if (!susfs_is_current_proc_umounted_app())
+        return false;
+
+    if (susfs_is_inode_sus_path(inode))
+        return true;
+
+    if (susfs_is_sus_path_ino(inode->i_sb->s_dev, inode->i_ino)) {
+        set_bit(AS_FLAGS_SUS_PATH, &inode->i_state);
+        return true;
+    }
+    return false;
+}
 #endif
 
 /* [Feb-1997 T. Schoebel-Theuer]
@@ -1556,7 +1572,7 @@ static struct dentry *lookup_dcache(const struct qstr *name,
 		}
 	}
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	if (dentry && !IS_ERR(dentry) && dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
+	if (dentry && !IS_ERR(dentry) && dentry->d_inode && susfs_check_and_heal_inode(dentry->d_inode)) {
 		if (d_in_lookup(dentry))
 			d_lookup_done(dentry);
 		dput(dentry);
@@ -1608,7 +1624,7 @@ retry:
 	if (unlikely(!dentry))
 		return ERR_PTR(-ENOMEM);
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	if (unlikely(dentry) && !IS_ERR(dentry) && dentry->d_inode && !found_sus_path && susfs_is_inode_sus_path(dentry->d_inode)) {
+	if (unlikely(dentry) && !IS_ERR(dentry) && dentry->d_inode && !found_sus_path && susfs_check_and_heal_inode(dentry->d_inode)) {
 		if (d_in_lookup(dentry))
 			d_lookup_done(dentry);
 		if (!(flags & LOOKUP_RCU))
@@ -1644,7 +1660,7 @@ static int lookup_fast(struct nameidata *nd,
 		bool negative;
 		dentry = __d_lookup_rcu(parent, &nd->last, &seq);
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-		if (is_nd_state_lookup_last_and_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
+		if (is_nd_state_lookup_last_and_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode && susfs_check_and_heal_inode(dentry->d_inode)) {
 				if (d_in_lookup(dentry))
 					d_lookup_done(dentry);
 				// no dput() here, __d_lookup_rcu() does not take the dentry->d_lockref.count
@@ -1701,7 +1717,7 @@ static int lookup_fast(struct nameidata *nd,
 	} else {
 		dentry = __d_lookup(parent, &nd->last);
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-		if (is_nd_state_lookup_last_and_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
+		if (is_nd_state_lookup_last_and_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode && susfs_check_and_heal_inode(dentry->d_inode)) {
 				if (d_in_lookup(dentry))
 					d_lookup_done(dentry);
 				dput(dentry);
@@ -1786,7 +1802,7 @@ retry:
 	}
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 	if (is_nd_flags_lookup_last && !found_sus_path && dentry && !IS_ERR(dentry) && dentry->d_inode &&
-		susfs_is_inode_sus_path(dentry->d_inode))
+		susfs_check_and_heal_inode(dentry->d_inode))
 	{
 		if (d_in_lookup(dentry))
 			d_lookup_done(dentry);
@@ -2199,7 +2215,7 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 			return err;
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 		dentry = nd->path.dentry;
-		if (dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
+		if (dentry->d_inode && susfs_check_and_heal_inode(dentry->d_inode)) {
 			// return -ENOENT here since it is walking the sub path of sus path
 			return -ENOENT;
 		}
@@ -3282,7 +3298,7 @@ static int lookup_open(struct nameidata *nd, struct path *path,
 	dentry = d_lookup(dir, &nd->last);
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 	if (is_nd_state_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode &&
-		susfs_is_inode_sus_path(dentry->d_inode))
+		susfs_check_and_heal_inode(dentry->d_inode))
 	{
 		if (d_in_lookup(dentry))
 			d_lookup_done(dentry);
