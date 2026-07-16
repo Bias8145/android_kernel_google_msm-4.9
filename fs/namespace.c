@@ -162,7 +162,7 @@ static void mnt_free_id(struct mount *mnt)
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	if (mnt->mnt.mnt_flags & VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT)
 		return;
-#endif /* CONFIG_KSU_SUSFS_SUS_MOUNT */(fs: susfs: Re-use mnt_id_ida and mnt_group_ida)
+#endif /* CONFIG_KSU_SUSFS_SUS_MOUNT */
 
 	id = mnt->mnt_id;
 	spin_lock(&mnt_id_lock);
@@ -382,12 +382,6 @@ static struct mount *alloc_vfsmnt(const char *name)
 		if (err)
 			goto out_free_cache;
 #endif
-		err = mnt_alloc_id(mnt);
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-bypass_orig_flow:
-#endif
-		if (err)
-			goto out_free_cache;
 
 		if (name) {
 			mnt->mnt_devname = kstrdup_const(name, GFP_KERNEL);
@@ -3189,7 +3183,7 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 	else if (flags & MS_MOVE)
 		retval = do_move_mount(&path, dev_name);
 	else
-		retval = do_new_mount(&path, type_page, sb_flags, mnt_flags,
+		retval = do_new_mount(&path, type_page, flags, mnt_flags,
 				      dev_name, data_page);
 
 dput_out:
