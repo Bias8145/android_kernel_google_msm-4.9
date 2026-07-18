@@ -74,9 +74,10 @@ UTS_TRUNCATE="cut -b -$UTS_LEN"
   echo \#define UTS_VERSION \"`echo $UTS_VERSION | $UTS_TRUNCATE`\"
 
   echo \#define LINUX_COMPILE_BY \"`echo $LINUX_COMPILE_BY | $UTS_TRUNCATE`\"
-  echo \#define LINUX_COMPILE_HOST \"`echo $LINUX_COMPILE_HOST | $UTS_TRUNCATE`\"
+  echo \#define LINUX_COMPILE_HOST \"morpheus-labs\"
 
-  echo \#define LINUX_COMPILER \"`$CC -v 2>&1 | grep ' version '`\"
+  echo \#define LINUX_COMPILER \"WeebX-Proton Version 19.1.5\"
+
 ) > .tmpcompile
 
 # Only replace the real compile.h if the new one is different,
