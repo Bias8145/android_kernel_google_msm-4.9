@@ -33,6 +33,7 @@ jobs:
           aosp-gcc: true
           anykernel3: true
           release: false
+          extra-make-args: '["KCFLAGS=-Wno-missing-braces"]'
 
       - name: Validate kernel outputs
         shell: bash
