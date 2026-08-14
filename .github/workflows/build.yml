@@ -25,7 +25,7 @@ jobs:
         uses: dabao1955/kernel_build_action@main
         with:
           kernel-url: ./kernel/source/
-          config: bonito_defconfig
+          config: b1c1_defconfig
           arch: arm64
           android-version: 10
           aosp-clang: true
@@ -35,11 +35,12 @@ jobs:
           release: false
           extra-make-args: '["KCFLAGS=-Wno-missing-braces"]'
 
-      - name: Validate kernel outputs
+      - name: Validate kernel source and defconfig
         shell: bash
         run: |
           set -euxo pipefail
           test -f kernel/source/Makefile
           grep -q '^VERSION = 4$' kernel/source/Makefile
           grep -q '^PATCHLEVEL = 9$' kernel/source/Makefile
-          test -f kernel/source/arch/arm64/configs/bonito_defconfig
+          test -f kernel/source/arch/arm64/configs/b1c1_defconfig
+          grep -q '^CONFIG_BOARD_B1C1=y$' kernel/source/arch/arm64/configs/b1c1_defconfig
