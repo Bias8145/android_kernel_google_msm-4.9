@@ -1,33 +1,44 @@
 name: Build Kernel AnyKernel3
 
 on:
+  push:
+    branches:
+      - test
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    name: Build Kernel
+    name: Build Android 10 Kernel + AnyKernel3
     runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-
     steps:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
           ref: test
           path: kernel/source
+          fetch-depth: 1
 
       - name: Build Kernel with AnyKernel3
         uses: dabao1955/kernel_build_action@main
         with:
           kernel-url: ./kernel/source/
-          config: b1c1_defconfig
+          config: bonito_defconfig
           arch: arm64
-          android-version: 9
+          android-version: 10
           aosp-clang: true
-          aosp-clang-version: r353911b
+          aosp-clang-version: r353983c
           aosp-gcc: true
           anykernel3: true
-          release: true
-          access-token: ${{ secrets.GITHUB_TOKEN }}
-          
+          release: false
+
+      - name: Validate kernel outputs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f kernel/source/Makefile
+          grep -q '^VERSION = 4$' kernel/source/Makefile
+          grep -q '^PATCHLEVEL = 9$' kernel/source/Makefile
+          test -f kernel/source/arch/arm64/configs/bonito_defconfig
