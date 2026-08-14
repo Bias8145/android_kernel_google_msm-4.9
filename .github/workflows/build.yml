@@ -1,0 +1,33 @@
+name: Build Kernel AnyKernel3
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          ref: test
+          path: kernel/source
+
+      - name: Build Kernel with AnyKernel3
+        uses: dabao1955/kernel_build_action@main
+        with:
+          kernel-url: ./kernel/source/
+          config: b1c1_defconfig
+          arch: arm64
+          android-version: 9
+          aosp-clang: true
+          aosp-clang-version: r353911b
+          aosp-gcc: true
+          anykernel3: true
+          release: true
+          access-token: ${{ secrets.GITHUB_TOKEN }}
+          
