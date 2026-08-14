@@ -16,6 +16,18 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
+      - name: Install Android DT tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip device-tree-compiler
+          python3 -m pip install --user --upgrade libufdt
+          USER_BIN="$HOME/.local/bin"
+          test -x "$USER_BIN/mkdtimg"
+          echo "$USER_BIN" >> "$GITHUB_PATH"
+          "$USER_BIN/mkdtimg" --help
+
       - name: Build kernel with kernel_build_action
         uses: dabao1955/kernel_build_action@main
         with:
