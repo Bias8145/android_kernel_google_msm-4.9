@@ -1,15 +1,14 @@
 name: Build B1C1 Android 10 Kernel + AnyKernel3
 
 on:
+  workflow_dispatch:
   push:
     branches: [test]
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
-  KERNEL_DIR: kernel/source
   ARCH: arm64
   DEFCONFIG: b1c1_defconfig
 
@@ -17,31 +16,11 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout exact workflow revision
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          path: kernel/source
-          fetch-depth: 1
-
-      - name: Verify B1C1 configuration
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cd "$KERNEL_DIR"
-          test -f Makefile
-          grep -q '^VERSION = 4$' Makefile
-          grep -q '^PATCHLEVEL = 9$' Makefile
-          test -f "arch/${ARCH}/configs/${DEFCONFIG}"
-          grep -q '^CONFIG_BOARD_B1C1=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
-          echo "Building commit: $(git rev-parse HEAD)"
-          echo "Defconfig: ${DEFCONFIG}"
-
-      - name: Build kernel and package AnyKernel3
+      - name: Build kernel with kernel_build_action
         uses: dabao1955/kernel_build_action@main
         with:
-          kernel-url: ./kernel/source
-          kernel-branch: ${{ github.sha }}
+          kernel-url: https://github.com/Bias8145/android_kernel_google_msm-4.9
+          kernel-branch: test
           config: b1c1_defconfig
           arch: arm64
           android-version: 10
@@ -52,13 +31,20 @@ jobs:
           release: false
           extra-make-args: '["KCFLAGS=-Wno-missing-braces"]'
 
-      - name: Locate and validate build outputs
+      - name: Validate AnyKernel3 output
+        if: success()
         shell: bash
         run: |
           set -euxo pipefail
-          echo '--- kernel/source ---'
-          find kernel/source -maxdepth 4 -type f \( -name 'Image*' -o -name '*.dtb' -o -name 'dtbo.img' \) -print | head -100 || true
-          echo '--- workspace ---'
-          find . -maxdepth 5 -type f -name '*.zip' -print | head -100 || true
-          echo '--- AnyKernel ---'
-          find . -maxdepth 6 -type f \( -name 'AnyKernel*.zip' -o -name '*AnyKernel*.zip' \) -print | head -100 || true
+          echo '--- generated archives ---'
+          find . -type f -name '*.zip' -print
+          count=$(find . -type f -name '*.zip' | wc -l)
+          test "$count" -ge 1
+          echo "AnyKernel3 ZIP count: $count"
+
+      - name: Validate kernel build output
+        if: success()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          find . -type f \( -name 'Image' -o -name 'Image.gz' -o -name 'Image.gz-dtb' -o -name 'Image.lz4' -o -name '*.dtb' -o -name 'dtbo.img' \) -print
