@@ -35,14 +35,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          git clone --depth=1 --branch android-10.0.0_r47 \
-            https://android.googlesource.com/platform/prebuilts/misc \
-            "$RUNNER_TEMP/prebuilts-misc"
+          git clone --depth=1 --branch android-10.0.0_r47 https://android.googlesource.com/platform/prebuilts/misc "$RUNNER_TEMP/prebuilts-misc"
           MKDTIMG="$RUNNER_TEMP/prebuilts-misc/linux-x86/libufdt/mkdtimg"
           test -f "$MKDTIMG"
           test -x "$MKDTIMG"
           sudo install -m 0755 "$MKDTIMG" /usr/local/bin/mkdtimg
-          command -v mkdtimg
           mkdtimg help all
 
       - name: Prepare B1C1 Android 10 build baseline
@@ -95,9 +92,6 @@ jobs:
           test -n "$KERNEL"
           test -s "$KERNEL"
 
-          # The Stock A10 boot image keeps its own ramdisk/DTB/DTBO.
-          # Remove DTB/DTBO payloads produced by the action from this first
-          # compatibility package so AnyKernel3 only replaces the kernel.
           rm -f build/dtbo.img build/dtb build/dtb.img
 
           cat > build/anykernel.sh <<'EOF'
@@ -127,19 +121,14 @@ EOF
           grep -q 'dump_boot;' build/anykernel.sh
           grep -q 'write_boot;' build/anykernel.sh
 
-          echo '=== AnyKernel3 files ==='
-          find build -maxdepth 2 -type f -printf '%p\n' | sort | head -300
-
           rm -f B1C1-A10-AnyKernel3.zip B1C1-A10-AnyKernel3.sha256
           (cd build && zip -r -9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" .)
           unzip -t B1C1-A10-AnyKernel3.zip
-          unzip -l B1C1-A10-AnyKernel3.zip | sed -n '1,180p'
           unzip -p B1C1-A10-AnyKernel3.zip anykernel.sh > "$RUNNER_TEMP/anykernel.sh"
           grep -q 'device.name1=blueline' "$RUNNER_TEMP/anykernel.sh"
           grep -q 'supported.versions=10' "$RUNNER_TEMP/anykernel.sh"
           grep -q 'IS_SLOT_DEVICE=1' "$RUNNER_TEMP/anykernel.sh"
           sha256sum B1C1-A10-AnyKernel3.zip | tee B1C1-A10-AnyKernel3.sha256
-          echo "ZIP=$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" >> "$GITHUB_ENV"
 
       - name: Upload AnyKernel3 artifact
         uses: actions/upload-artifact@v4
@@ -148,19 +137,3 @@ EOF
           path: |
             B1C1-A10-AnyKernel3.zip
             B1C1-A10-AnyKernel3.sha256
-          if-no-files-found: error
-
-      - name: Create GitHub Release
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euxo pipefail
-          TAG="b1c1-a10-$(date -u +%Y%m%d-%H%M%S)"
-          gh release create "$TAG" \
-            "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" \
-            "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.sha256" \
-            --target test \
-            --title "B1C1 Android 10 Kernel $TAG" \
-            --notes "B1C1 Pixel 3 kernel for Stock Android 10. Boot compatibility still requires hardware testing."
