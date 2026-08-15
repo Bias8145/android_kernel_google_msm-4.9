@@ -60,7 +60,7 @@ jobs:
           grep -q '^VERSION = 4$' Makefile
           grep -q '^PATCHLEVEL = 9$' Makefile
           test -f "arch/${ARCH}/configs/${DEFCONFIG}"
-          grep -q '^CONFIG_BOARD_B1C1=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
+          grep -q '^CONFIG_BOARD_B1C1=y$' "arch/${ARM64:-arm64}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_LTO_CLANG=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_CFI_CLANG=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
           echo "Commit: $(git rev-parse HEAD)"
@@ -76,6 +76,7 @@ jobs:
           aosp-clang: true
           aosp-clang-version: r353983c
           aosp-gcc: true
+          disable-lto: true
           anykernel3: false
           release: false
           extra-make-args: '["KCFLAGS=-Wno-missing-braces"]'
@@ -97,7 +98,9 @@ jobs:
           KERNEL="$(find . -type f \( -name 'Image.lz4-dtb' -o -name 'Image.gz-dtb' -o -name 'Image.lz4' -o -name 'Image.gz' -o -name 'Image' \) | head -n1)"
           test -n "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
-          test -f "$(find . -type f -name 'dtbo.img' | head -n1)"
+          DTBO="$(find . -type f -name 'dtbo.img' | head -n1)"
+          test -n "$DTBO"
+          test -f "$DTBO"
 
       - name: Package with osm0sis AnyKernel3
         shell: bash
@@ -106,51 +109,9 @@ jobs:
           rm -rf "$RUNNER_TEMP/AnyKernel3"
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git "$RUNNER_TEMP/AnyKernel3"
           cd "$RUNNER_TEMP/AnyKernel3"
-
-          rm -rf ramdisk patch modules
-          find . -maxdepth 1 -type f ! -name 'LICENSE' ! -name 'anykernel.sh' -delete || true
-
           cp "$GITHUB_WORKSPACE/$KERNEL" ./
-
           DTBO="$(find "$GITHUB_WORKSPACE" -type f -name 'dtbo.img' | head -n1)"
-          if [ -n "$DTBO" ]; then
-            cp "$DTBO" ./dtbo.img
-          fi
-
-          cat > anykernel.sh <<'EOF'
-### AnyKernel3 Ramdisk Mod Script
-## B1C1 / Pixel 3 / Stock Android 10
-## Based on osm0sis AnyKernel3
-
-properties() { '
-kernel.string=B1C1 A10 Kernel by Bias8145
- do.devicecheck=1
- do.modules=0
- do.systemless=0
- do.cleanup=1
- do.cleanuponabort=0
- device.name1=blueline
- supported.versions=10
- supported.patchlevels=
- '; }
-
-BLOCK=boot;
-IS_SLOT_DEVICE=1;
-RAMDISK_COMPRESSION=auto;
-PATCH_VBMETA_FLAG=auto;
-
-. tools/ak3-core.sh;
-
-write_boot;
-## end install
-EOF
-
-          sed -i 's/^ kernel.string/kernel.string/' anykernel.sh
-          sed -i 's/^ do\./ do./' anykernel.sh
-          sed -i 's/^ device\./ device./' anykernel.sh
-          sed -i 's/^ supported\./ supported./' anykernel.sh
-          chmod +x anykernel.sh
-
+          cp "$DTBO" ./dtbo.img
           ZIP_NAME="B1C1-A10-AnyKernel3-$(date -u +%Y%m%d-%H%M).zip"
           zip -r9 "$GITHUB_WORKSPACE/$ZIP_NAME" . -x '.git/*' 'README.md' '*placeholder*'
           test -s "$GITHUB_WORKSPACE/$ZIP_NAME"
