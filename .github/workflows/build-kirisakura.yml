@@ -1,4 +1,4 @@
-name: Build Kirisakura B1C1 Android 12 Kernel + AnyKernel3
+name: Build Kirisakura Release_S_2 B1C1 + AnyKernel3
 
 on:
   workflow_dispatch:
@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y python3 device-tree-compiler git build-essential gcc g++ zip unzip lz4
+          sudo apt-get install -y python3 device-tree-compiler git build-essential gcc g++ zip unzip lz4 perl
 
       - name: Install Android 12 mkdtimg
         shell: bash
@@ -52,7 +52,7 @@ jobs:
           sudo install -m 0755 "$MKDTIMG" /usr/local/bin/mkdtimg
           mkdtimg help all
 
-      - name: Verify Kirisakura B1C1 source
+      - name: Verify Kirisakura Release_S_2 source
         shell: bash
         working-directory: ${{ env.KERNEL_WORKDIR }}
         run: |
@@ -64,8 +64,35 @@ jobs:
           grep -q '^CONFIG_CFI_CLANG=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_SHADOW_CALL_STACK=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_KERNEL_LZ4=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
+          test -d drivers/kernelsu
+          grep -Rqs 'SUSFS_VERSION' drivers/kernelsu fs include
 
-      - name: Build Kirisakura kernel with AnyKernel3
+      - name: Apply source-compatible build fixes
+        shell: bash
+        working-directory: ${{ env.KERNEL_WORKDIR }}
+        run: |
+          set -euxo pipefail
+
+          # Release_S_2 carries the original procfs reporting code, but this
+          # fork's mm API no longer exposes nr_ptes/mm_nr_pmds. Keep the
+          # VmPTE/VmPMD fields present while avoiding unavailable APIs.
+          perl -0pi -e 's/ptes = PTRS_PER_PTE \* sizeof\(pte_t\) \* atomic_long_read\(&mm->nr_ptes\);/ptes = 0;/g; s/pmds = PTRS_PER_PMD \* sizeof\(pmd_t\) \* mm_nr_pmds\(mm\);/pmds = 0;/g' fs/proc/task_mmu.c
+
+          # msm_geni_console_port is an array; initialize the mutex belonging
+          # to the current console-port element.
+          perl -0pi -e 's/mutex_init\(&msm_geni_console_port\.ioctl_mutex\);/mutex_init\(&msm_geni_console_port[i].ioctl_mutex\);/g' drivers/tty/serial/msm_geni_serial.c
+
+          # KSU-Next is already embedded in this source tree. Do not let the
+          # build action attempt to recurse into a stale/missing submodule URL.
+          rm -f .gitmodules
+          rm -rf .git/modules/KernelSU-Next
+
+          grep -n 'ptes = 0;' fs/proc/task_mmu.c
+          grep -n 'pmds = 0;' fs/proc/task_mmu.c
+          grep -n 'msm_geni_console_port\[i\]\.ioctl_mutex' drivers/tty/serial/msm_geni_serial.c
+          test ! -f .gitmodules
+
+      - name: Build Kirisakura Release_S_2 kernel with AnyKernel3
         uses: dabao1955/kernel_build_action@v1.10.2
         with:
           kernel-url: ${{ env.KERNEL_WORKDIR }}
@@ -95,7 +122,7 @@ jobs:
           echo "KERNEL_IMAGE=$KERNEL" >> "$GITHUB_ENV"
           echo "DTBO_IMAGE=$DTBO" >> "$GITHUB_ENV"
 
-      - name: Build flash-ready Pixel 3 AnyKernel3 from Osmosis template
+      - name: Build flash-ready Osmosis AnyKernel3
         shell: bash
         run: |
           set -euxo pipefail
@@ -107,16 +134,17 @@ jobs:
           cp "$KERNEL_IMAGE" ./Image.lz4-dtb
           cp "$DTBO_IMAGE" ./dtbo.img
           {
-            echo '# AnyKernel3 - Bias8145 Kirisakura B1C1 Pixel 3 Android 12'
+            echo '# AnyKernel3 - Bias8145 Kirisakura Release_S_2 B1C1 Pixel 3/3 XL'
             echo 'properties() {'
-            echo "  kernel.string=Bias8145 Kirisakura B1C1 Android 12 Kernel"
+            echo "  kernel.string=Bias8145 Kirisakura Release_S_2 B1C1 Kernel"
             echo '  do.devicecheck=1'
             echo '  do.modules=0'
             echo '  do.systemless=0'
             echo '  do.cleanup=1'
             echo '  do.cleanuponabort=0'
             echo '  device.name1=blueline'
-            echo '  supported.versions=12'
+            echo '  device.name2=crosshatch'
+            echo '  supported.versions='
             echo '  supported.patchlevels='
             echo '  supported.vendorpatchlevels='
             echo '}'
@@ -131,7 +159,8 @@ jobs:
           } > anykernel.sh
           chmod 0755 anykernel.sh
           grep -q 'device.name1=blueline' anykernel.sh
-          grep -q 'supported.versions=12' anykernel.sh
+          grep -q 'device.name2=crosshatch' anykernel.sh
+          grep -q '^supported.versions=$' anykernel.sh
           grep -q '^BLOCK=boot;' anykernel.sh
           grep -q '^IS_SLOT_DEVICE=1;' anykernel.sh
           grep -q 'flash_dtbo;' anykernel.sh
@@ -139,21 +168,21 @@ jobs:
           test -s Image.lz4-dtb
           test -s dtbo.img
           cd "$GITHUB_WORKSPACE"
-          rm -f Kirisakura-B1C1-A12-AnyKernel3.zip Kirisakura-B1C1-A12-AnyKernel3.sha256
+          rm -f Kirisakura-Release-S_2-B1C1-AnyKernel3.zip Kirisakura-Release-S_2-B1C1-AnyKernel3.sha256
           cd "$RUNNER_TEMP/anykernel-package"
-          zip -r9 "$GITHUB_WORKSPACE/Kirisakura-B1C1-A12-AnyKernel3.zip" . -x '.git/*' '.github/*' 'README.md' '*placeholder*'
+          zip -r9 "$GITHUB_WORKSPACE/Kirisakura-Release-S_2-B1C1-AnyKernel3.zip" . -x '.git/*' '.github/*' 'README.md' '*placeholder*'
           cd "$GITHUB_WORKSPACE"
-          unzip -t Kirisakura-B1C1-A12-AnyKernel3.zip
-          unzip -l Kirisakura-B1C1-A12-AnyKernel3.zip | grep -E 'Image\.lz4-dtb|dtbo\.img|anykernel\.sh|tools/ak3-core\.sh|META-INF/com/google/android/update-binary|LICENSE'
-          sha256sum Kirisakura-B1C1-A12-AnyKernel3.zip | tee Kirisakura-B1C1-A12-AnyKernel3.sha256
+          unzip -t Kirisakura-Release-S_2-B1C1-AnyKernel3.zip
+          unzip -l Kirisakura-Release-S_2-B1C1-AnyKernel3.zip | grep -E 'Image\.lz4-dtb|dtbo\.img|anykernel\.sh|tools/ak3-core\.sh|META-INF/com/google/android/update-binary|LICENSE'
+          sha256sum Kirisakura-Release-S_2-B1C1-AnyKernel3.zip | tee Kirisakura-Release-S_2-B1C1-AnyKernel3.sha256
 
       - name: Upload flash-ready AnyKernel3
         uses: actions/upload-artifact@v4
         with:
-          name: Kirisakura-B1C1-A12-AnyKernel3-ready
+          name: Kirisakura-Release-S_2-B1C1-AnyKernel3-ready
           path: |
-            Kirisakura-B1C1-A12-AnyKernel3.zip
-            Kirisakura-B1C1-A12-AnyKernel3.sha256
+            Kirisakura-Release-S_2-B1C1-AnyKernel3.zip
+            Kirisakura-Release-S_2-B1C1-AnyKernel3.sha256
 
       - name: Create GitHub pre-release
         if: github.event_name == 'workflow_dispatch'
@@ -162,5 +191,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          TAG="kirisakura-b1c1-a12-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Kirisakura-B1C1-A12-AnyKernel3.zip Kirisakura-B1C1-A12-AnyKernel3.sha256 --repo "$GITHUB_REPOSITORY" --prerelease --title "Kirisakura B1C1 Android 12 Kernel ${GITHUB_RUN_NUMBER}" --notes "Kirisakura B1C1 (Pixel 3 / blueline) Android 12-targeted kernel. Package uses the Osmosis AnyKernel3 template. Hardware boot validation is required before treating a build as production-safe."
+          TAG="kirisakura-release-s2-b1c1-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" Kirisakura-Release-S_2-B1C1-AnyKernel3.zip Kirisakura-Release-S_2-B1C1-AnyKernel3.sha256 --repo "$GITHUB_REPOSITORY" --prerelease --title "Kirisakura Release_S_2 B1C1 Kernel ${GITHUB_RUN_NUMBER}" --notes "Kirisakura Release_S_2 baseline for Pixel 3/3 XL. Osmosis AnyKernel3 package. Android compatibility follows the source/release; no Android-version restriction is embedded in the installer. Hardware boot validation is required before treating a build as production-safe."
