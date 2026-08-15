@@ -1,0 +1,67 @@
+name: Apply KSU Next + SUSFS to Kirisakura
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: kirisakura
+          fetch-depth: 0
+
+      - name: Apply KSU Next + SUSFS commits sequentially
+        shell: bash
+        run: |
+          set -u -o pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch origin kirisakura thirteen-next-2 --prune
+          git checkout -B kirisakura origin/kirisakura
+          mapfile -t ALL < <(git rev-list --reverse --committer='2026-05-21T00:00:00+00:00' --until='2026-07-18T23:59:59+00:00' origin/thirteen-next-2)
+          test "${#ALL[@]}" -gt 0
+          : > /tmp/applied.txt
+          : > /tmp/skipped.txt
+          for c in "${ALL[@]}"; do
+            msg="$(git show -s --format=%s "$c")"
+            patch="$(git show --format= --unified=0 "$c" --)"
+            files="$(git diff-tree --no-commit-id --name-only -r "$c")"
+            if printf '%s\n%s\n%s\n' "$msg" "$files" "$patch" | grep -Eiq 'KernelSU|KernelSU-Next|ksu[_-]|SUSFS|susfs'; then
+              echo "=== APPLY $c ==="
+              echo "$msg"
+              if ! git cherry-pick -x "$c"; then
+                echo "CONFLICT while applying $c"
+                git status --short
+                git cherry-pick --abort || true
+                exit 1
+              fi
+              printf '%s %s\n' "$c" "$msg" >> /tmp/applied.txt
+            else
+              printf '%s %s\n' "$c" "$msg" >> /tmp/skipped.txt
+            fi
+          done
+          echo '=== APPLIED COMMITS ==='
+          cat /tmp/applied.txt
+          echo '=== SKIPPED NON-KSU/SUSFS COMMITS ==='
+          cat /tmp/skipped.txt
+          test -s /tmp/applied.txt
+          echo '=== VERIFY KSU/SUSFS SOURCES ==='
+          find . -maxdepth 4 -type d \( -iname '*kernelsu*' -o -iname '*susfs*' \) -print
+          grep -RIlE 'KernelSU|KernelSU-Next|SUSFS|susfs' drivers kernel fs include 2>/dev/null | head -100 || true
+          git status --short
+          git log --oneline -n 20
+          git add -A
+          git commit --allow-empty -m "chore: finalize sequential KSU Next SUSFS backport" || true
+          rm -f .github/workflows/apply-ksu-susfs.yml
+          git add -A
+          git commit -m "chore: remove temporary KSU SUSFS backport workflow"
+          git push origin HEAD:kirisakura
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
