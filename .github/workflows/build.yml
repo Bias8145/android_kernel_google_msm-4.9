@@ -103,21 +103,55 @@ jobs:
           DTBO="$(find . -type f -name 'dtbo.img' | head -n1)"
           test -n "$DTBO"
           test -f "$DTBO"
+          echo "DTBO=$DTBO" >> "$GITHUB_ENV"
 
       - name: Package with osm0sis AnyKernel3
         shell: bash
         run: |
           set -euxo pipefail
-          rm -rf "$RUNNER_TEMP/AnyKernel3"
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git "$RUNNER_TEMP/AnyKernel3"
-          cd "$RUNNER_TEMP/AnyKernel3"
-          cp "$GITHUB_WORKSPACE/$KERNEL" ./
-          DTBO="$(find "$GITHUB_WORKSPACE" -type f -name 'dtbo.img' | head -n1)"
-          cp "$DTBO" ./dtbo.img
+          AK3="$RUNNER_TEMP/AnyKernel3"
+          rm -rf "$AK3"
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git "$AK3"
+
+          cd "$AK3"
+          rm -rf .git
+
+          cp "$GITHUB_WORKSPACE/$KERNEL" ./kernel.img
+
+          cat > anykernel.sh <<'EOF'
+          ### B1C1 Android 10 AnyKernel3 installer
+          properties() { '
+          kernel.string=B1C1 A10 Kernel by Bias8145
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=blueline
+          supported.versions=10
+          '; }
+
+          BLOCK=/dev/block/by-name/boot;
+          IS_SLOT_DEVICE=1;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
+
+          . tools/ak3-core.sh;
+
+          dump_boot;
+          write_boot;
+          EOF
+
+          chmod 0755 anykernel.sh
+
           ZIP_NAME="B1C1-A10-AnyKernel3-$(date -u +%Y%m%d-%H%M).zip"
-          zip -r9 "$GITHUB_WORKSPACE/$ZIP_NAME" . -x '.git/*' 'README.md' '*placeholder*'
+          zip -r9 "$GITHUB_WORKSPACE/$ZIP_NAME" . \
+            -x '.git/*' 'README.md' '*placeholder*'
           test -s "$GITHUB_WORKSPACE/$ZIP_NAME"
           unzip -t "$GITHUB_WORKSPACE/$ZIP_NAME"
+          unzip -p "$GITHUB_WORKSPACE/$ZIP_NAME" anykernel.sh | grep -q 'device.name1=blueline'
+          unzip -p "$GITHUB_WORKSPACE/$ZIP_NAME" anykernel.sh | grep -q 'IS_SLOT_DEVICE=1'
+          unzip -p "$GITHUB_WORKSPACE/$ZIP_NAME" kernel.img >/dev/null
           sha256sum "$GITHUB_WORKSPACE/$ZIP_NAME" | tee "$GITHUB_WORKSPACE/$ZIP_NAME.sha256"
           echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_ENV"
 
