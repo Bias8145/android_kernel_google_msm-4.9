@@ -1,4 +1,4 @@
-name: Build Kirisakura B1C1 Android 10 Kernel + AnyKernel3
+name: Build Kirisakura B1C1 Android 12 Kernel + AnyKernel3
 
 on:
   workflow_dispatch:
@@ -41,11 +41,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3 device-tree-compiler git build-essential gcc g++ zip unzip lz4
 
-      - name: Install Android 10 mkdtimg
+      - name: Install Android 12 mkdtimg
         shell: bash
         run: |
           set -euxo pipefail
-          git clone --depth=1 --branch android-10.0.0_r47 https://android.googlesource.com/platform/prebuilts/misc "$RUNNER_TEMP/prebuilts-misc"
+          git clone --depth=1 --branch android-12.0.0_r34 https://android.googlesource.com/platform/prebuilts/misc "$RUNNER_TEMP/prebuilts-misc"
           MKDTIMG="$RUNNER_TEMP/prebuilts-misc/linux-x86/libufdt/mkdtimg"
           test -f "$MKDTIMG"
           test -x "$MKDTIMG"
@@ -65,16 +65,16 @@ jobs:
           grep -q '^CONFIG_SHADOW_CALL_STACK=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_KERNEL_LZ4=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
 
-      - name: Build kernel with AnyKernel3
+      - name: Build Kirisakura kernel with AnyKernel3
         uses: dabao1955/kernel_build_action@v1.10.2
         with:
           kernel-url: ${{ env.KERNEL_WORKDIR }}
           kernel-branch: kirisakura
           config: b1c1_defconfig
           arch: arm64
-          android-version: 10
+          android-version: 12
           aosp-clang: true
-          aosp-clang-version: r353983c
+          aosp-clang-version: r416183b
           aosp-gcc: true
           disable-lto: true
           anykernel3: true
@@ -107,16 +107,16 @@ jobs:
           cp "$KERNEL_IMAGE" ./Image.lz4-dtb
           cp "$DTBO_IMAGE" ./dtbo.img
           {
-            echo '# AnyKernel3 - Bias8145 Kirisakura B1C1 Pixel 3 Android 10'
+            echo '# AnyKernel3 - Bias8145 Kirisakura B1C1 Pixel 3 Android 12'
             echo 'properties() {'
-            echo "  kernel.string=Bias8145 Kirisakura B1C1 Android 10 Kernel"
+            echo "  kernel.string=Bias8145 Kirisakura B1C1 Android 12 Kernel"
             echo '  do.devicecheck=1'
             echo '  do.modules=0'
             echo '  do.systemless=0'
             echo '  do.cleanup=1'
             echo '  do.cleanuponabort=0'
             echo '  device.name1=blueline'
-            echo '  supported.versions=10'
+            echo '  supported.versions=12'
             echo '  supported.patchlevels='
             echo '  supported.vendorpatchlevels='
             echo '}'
@@ -131,7 +131,7 @@ jobs:
           } > anykernel.sh
           chmod 0755 anykernel.sh
           grep -q 'device.name1=blueline' anykernel.sh
-          grep -q 'supported.versions=10' anykernel.sh
+          grep -q 'supported.versions=12' anykernel.sh
           grep -q '^BLOCK=boot;' anykernel.sh
           grep -q '^IS_SLOT_DEVICE=1;' anykernel.sh
           grep -q 'flash_dtbo;' anykernel.sh
@@ -139,21 +139,21 @@ jobs:
           test -s Image.lz4-dtb
           test -s dtbo.img
           cd "$GITHUB_WORKSPACE"
-          rm -f Kirisakura-B1C1-A10-AnyKernel3.zip Kirisakura-B1C1-A10-AnyKernel3.sha256
+          rm -f Kirisakura-B1C1-A12-AnyKernel3.zip Kirisakura-B1C1-A12-AnyKernel3.sha256
           cd "$RUNNER_TEMP/anykernel-package"
-          zip -r9 "$GITHUB_WORKSPACE/Kirisakura-B1C1-A10-AnyKernel3.zip" . -x '.git/*' '.github/*' 'README.md' '*placeholder*'
+          zip -r9 "$GITHUB_WORKSPACE/Kirisakura-B1C1-A12-AnyKernel3.zip" . -x '.git/*' '.github/*' 'README.md' '*placeholder*'
           cd "$GITHUB_WORKSPACE"
-          unzip -t Kirisakura-B1C1-A10-AnyKernel3.zip
-          unzip -l Kirisakura-B1C1-A10-AnyKernel3.zip | grep -E 'Image\.lz4-dtb|dtbo\.img|anykernel\.sh|tools/ak3-core\.sh|META-INF/com/google/android/update-binary|LICENSE'
-          sha256sum Kirisakura-B1C1-A10-AnyKernel3.zip | tee Kirisakura-B1C1-A10-AnyKernel3.sha256
+          unzip -t Kirisakura-B1C1-A12-AnyKernel3.zip
+          unzip -l Kirisakura-B1C1-A12-AnyKernel3.zip | grep -E 'Image\.lz4-dtb|dtbo\.img|anykernel\.sh|tools/ak3-core\.sh|META-INF/com/google/android/update-binary|LICENSE'
+          sha256sum Kirisakura-B1C1-A12-AnyKernel3.zip | tee Kirisakura-B1C1-A12-AnyKernel3.sha256
 
       - name: Upload flash-ready AnyKernel3
         uses: actions/upload-artifact@v4
         with:
-          name: Kirisakura-B1C1-A10-AnyKernel3-ready
+          name: Kirisakura-B1C1-A12-AnyKernel3-ready
           path: |
-            Kirisakura-B1C1-A10-AnyKernel3.zip
-            Kirisakura-B1C1-A10-AnyKernel3.sha256
+            Kirisakura-B1C1-A12-AnyKernel3.zip
+            Kirisakura-B1C1-A12-AnyKernel3.sha256
 
       - name: Create GitHub pre-release
         if: github.event_name == 'workflow_dispatch'
@@ -162,5 +162,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          TAG="kirisakura-b1c1-a10-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Kirisakura-B1C1-A10-AnyKernel3.zip Kirisakura-B1C1-A10-AnyKernel3.sha256 --repo "$GITHUB_REPOSITORY" --prerelease --title "Kirisakura B1C1 Android 10 Kernel ${GITHUB_RUN_NUMBER}" --notes "Kirisakura branch B1C1 (Pixel 3 / blueline) Android 10 kernel. Package uses the Osmosis AnyKernel3 template and contains Image.lz4-dtb plus dtbo.img. Hardware boot validation is still required before treating a build as production-safe."
+          TAG="kirisakura-b1c1-a12-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" Kirisakura-B1C1-A12-AnyKernel3.zip Kirisakura-B1C1-A12-AnyKernel3.sha256 --repo "$GITHUB_REPOSITORY" --prerelease --title "Kirisakura B1C1 Android 12 Kernel ${GITHUB_RUN_NUMBER}" --notes "Kirisakura B1C1 (Pixel 3 / blueline) Android 12-targeted kernel. Package uses the Osmosis AnyKernel3 template. Hardware boot validation is required before treating a build as production-safe."
