@@ -45,7 +45,7 @@ jobs:
           command -v mkdtimg
           mkdtimg help all
 
-      - name: Prepare B1C1 Android 10 config
+      - name: Prepare B1C1 Android 10 build baseline
         shell: bash
         run: |
           set -euxo pipefail
@@ -60,9 +60,10 @@ jobs:
           grep -q '^VERSION = 4$' Makefile
           grep -q '^PATCHLEVEL = 9$' Makefile
           test -f "arch/${ARCH}/configs/${DEFCONFIG}"
-          grep -q '^CONFIG_BOARD_B1C1=y$' "arch/${ARM64:-arm64}/configs/${DEFCONFIG}"
-          grep -q '^CONFIG_LTO_CLANG=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
+          grep -q '^CONFIG_BOARD_B1C1=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
+          grep -q '^# CONFIG_LTO_CLANG is not set$' "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_CFI_CLANG=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
+          grep -q '^CONFIG_SHADOW_CALL_STACK=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
           echo "Commit: $(git rev-parse HEAD)"
           echo "Defconfig: ${DEFCONFIG}"
 
@@ -98,6 +99,7 @@ jobs:
           KERNEL="$(find . -type f \( -name 'Image.lz4-dtb' -o -name 'Image.gz-dtb' -o -name 'Image.lz4' -o -name 'Image.gz' -o -name 'Image' \) | head -n1)"
           test -n "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
+
           DTBO="$(find . -type f -name 'dtbo.img' | head -n1)"
           test -n "$DTBO"
           test -f "$DTBO"
