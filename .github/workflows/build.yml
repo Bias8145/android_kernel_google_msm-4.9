@@ -11,6 +11,7 @@ permissions:
 env:
   ARCH: arm64
   DEFCONFIG: b1c1_defconfig
+  AK3_REPO: https://github.com/osm0sis/AnyKernel3.git
 
 jobs:
   build:
@@ -84,62 +85,107 @@ jobs:
           aosp-gcc: true
           disable-lto: true
           anykernel3: true
-          anykernel3-url: https://github.com/osm0sis/AnyKernel3.git
+          anykernel3-url: ${{ env.AK3_REPO }}
           release: false
           extra-make-args: '["KCFLAGS=-Wno-missing-braces"]'
 
-      - name: Locate built kernel output
+      - name: Locate kernel and DTBO outputs
         shell: bash
         run: |
           set -euxo pipefail
-          echo '=== Candidate kernel images ==='
-          find "$RUNNER_TEMP" "$GITHUB_WORKSPACE" -type f \( -name 'Image.lz4-dtb' -o -name 'Image.gz-dtb' -o -name 'Image-dtb' -o -name 'zImage' -o -name 'Image' \) -print | tee "$RUNNER_TEMP/kernel-images.txt"
-          KERNEL="$(head -n1 "$RUNNER_TEMP/kernel-images.txt")"
+          KERNEL="$(find "$GITHUB_WORKSPACE" "$RUNNER_TEMP" -type f -name 'Image.lz4-dtb' -print -quit)"
+          DTBO="$(find "$GITHUB_WORKSPACE" "$RUNNER_TEMP" -type f -name 'dtbo.img' -print -quit)"
           test -n "$KERNEL"
           test -s "$KERNEL"
+          test -n "$DTBO"
+          test -s "$DTBO"
           echo "KERNEL_IMAGE=$KERNEL" >> "$GITHUB_ENV"
+          echo "DTBO_IMAGE=$DTBO" >> "$GITHUB_ENV"
           echo "Selected kernel: $KERNEL"
+          echo "Selected DTBO: $DTBO"
 
-      - name: Package AnyKernel3 ZIP
+      - name: Build flash-ready Pixel 3 AnyKernel3
         shell: bash
         run: |
           set -euxo pipefail
-          test -n "$KERNEL_IMAGE"
-          test -s "$KERNEL_IMAGE"
           rm -rf "$RUNNER_TEMP/anykernel-package"
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git "$RUNNER_TEMP/anykernel-package"
-          rm -f "$RUNNER_TEMP/anykernel-package"/Image* "$RUNNER_TEMP/anykernel-package"/zImage* "$RUNNER_TEMP/anykernel-package"/dtb* "$RUNNER_TEMP/anykernel-package"/dtbo.img
-          cp "$KERNEL_IMAGE" "$RUNNER_TEMP/anykernel-package/"
-          printf '%s\n' "properties() { '" 'kernel.string=Bias8145 B1C1 Android 10 Kernel' 'do.devicecheck=1' 'device.name1=blueline' 'supported.versions=10' "'; }" '' 'BLOCK=auto;' 'IS_SLOT_DEVICE=1;' 'RAMDISK_COMPRESSION=auto;' 'PATCH_VBMETA_FLAG=auto;' '' '. tools/ak3-core.sh;' 'dump_boot;' 'write_boot;' > "$RUNNER_TEMP/anykernel-package/anykernel.sh"
-          chmod 0755 "$RUNNER_TEMP/anykernel-package/anykernel.sh"
-          grep -q 'device.name1=blueline' "$RUNNER_TEMP/anykernel-package/anykernel.sh"
-          grep -q 'supported.versions=10' "$RUNNER_TEMP/anykernel-package/anykernel.sh"
-          grep -q 'IS_SLOT_DEVICE=1' "$RUNNER_TEMP/anykernel-package/anykernel.sh"
+          git clone --depth=1 "$AK3_REPO" "$RUNNER_TEMP/anykernel-package"
+          cd "$RUNNER_TEMP/anykernel-package"
+
+          rm -rf .git .github
+          rm -f README.md Image Image.* zImage zImage.* dtb dtb.img dtbo.img anykernel.sh
+          cp "$KERNEL_IMAGE" ./Image.lz4-dtb
+          cp "$DTBO_IMAGE" ./dtbo.img
+
+          cat > anykernel.sh <<'AK3'
+          ### AnyKernel3 - Bias8145 B1C1 Pixel 3 Android 10
+          properties() { '
+          kernel.string=Bias8145 B1C1 Android 10 Kernel
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=0
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=blueline
+          supported.versions=10
+          supported.patchlevels=
+          '; }
+
+          boot_attributes() {
+          set_perm_recursive 0 0 755 644 $RAMDISK/*;
+          set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
+          }
+
+          BLOCK=boot;
+          IS_SLOT_DEVICE=1;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
+
+          . tools/ak3-core.sh;
+
+          dump_boot;
+          flash_dtbo;
+          write_boot;
+          AK3
+          chmod 0755 anykernel.sh
+
+          grep -q 'device.name1=blueline' anykernel.sh
+          grep -q 'supported.versions=10' anykernel.sh
+          grep -q '^BLOCK=boot;' anykernel.sh
+          grep -q '^IS_SLOT_DEVICE=1;' anykernel.sh
+          grep -q 'flash_dtbo;' anykernel.sh
+          test -s Image.lz4-dtb
+          test -s dtbo.img
+
+          cd "$GITHUB_WORKSPACE"
           rm -f B1C1-A10-AnyKernel3.zip B1C1-A10-AnyKernel3.sha256
-          (cd "$RUNNER_TEMP/anykernel-package" && zip -r -9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" . -x '.git/*')
+          cd "$RUNNER_TEMP/anykernel-package"
+          zip -r9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" . -x '.git/*' '.github/*' 'README.md' '*placeholder*'
+          cd "$GITHUB_WORKSPACE"
           unzip -t B1C1-A10-AnyKernel3.zip
+          unzip -l B1C1-A10-AnyKernel3.zip | grep -E 'Image\.lz4-dtb|dtbo\.img|anykernel\.sh|tools/ak3-core\.sh'
           sha256sum B1C1-A10-AnyKernel3.zip | tee B1C1-A10-AnyKernel3.sha256
 
-      - name: Upload AnyKernel3 artifact
+      - name: Upload flash-ready AnyKernel3
         uses: actions/upload-artifact@v4
         with:
-          name: B1C1-A10-AnyKernel3
+          name: B1C1-A10-AnyKernel3-ready
           path: |
             B1C1-A10-AnyKernel3.zip
             B1C1-A10-AnyKernel3.sha256
 
-      - name: Publish GitHub Release
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+      - name: Create GitHub pre-release
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
           TAG="b1c1-a10-test-${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" \
             B1C1-A10-AnyKernel3.zip \
             B1C1-A10-AnyKernel3.sha256 \
-            --target "$GITHUB_SHA" \
+            --repo "$GITHUB_REPOSITORY" \
+            --prerelease \
             --title "B1C1 Android 10 Kernel ${GITHUB_RUN_NUMBER}" \
-            --notes "B1C1 Android 10 kernel build from branch test. Built with b1c1_defconfig and packaged as AnyKernel3. This is a test build for Stock Pixel 3 Android 10 compatibility; boot compatibility is not yet guaranteed." \
-            --prerelease
+            --notes "B1C1 Pixel 3 (blueline) Android 10 test kernel. Built from branch test with b1c1_defconfig. AnyKernel3 package includes Image.lz4-dtb and dtbo.img. Test on a bootable/recoverable device only; boot compatibility is not guaranteed until hardware validation."
