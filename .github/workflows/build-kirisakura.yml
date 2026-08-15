@@ -1,4 +1,4 @@
-name: Build Kirisakura B1C1 Android 10 Kernel + Osmosis AnyKernel3
+name: Build Kirisakura B1C1 Android 10 Kernel + AnyKernel3
 
 on:
   workflow_dispatch:
@@ -12,18 +12,27 @@ env:
   ARCH: arm64
   DEFCONFIG: b1c1_defconfig
   AK3_REPO: https://github.com/osm0sis/AnyKernel3.git
-  KERNEL_BRANCH: kirisakura
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout Kirisakura source
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
           ref: kirisakura
           fetch-depth: 1
           submodules: false
+
+      - name: Copy kernel source to runner temp
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf "$RUNNER_TEMP/kirisakura-kernel"
+          mkdir -p "$RUNNER_TEMP/kirisakura-kernel"
+          cp -a ./. "$RUNNER_TEMP/kirisakura-kernel/"
+          echo "KERNEL_WORKDIR=$RUNNER_TEMP/kirisakura-kernel" >> "$GITHUB_ENV"
+          test -f "$RUNNER_TEMP/kirisakura-kernel/Makefile"
 
       - name: Install dependencies
         shell: bash
@@ -45,6 +54,7 @@ jobs:
 
       - name: Verify Kirisakura B1C1 source
         shell: bash
+        working-directory: ${{ env.KERNEL_WORKDIR }}
         run: |
           set -euxo pipefail
           test -f Makefile
@@ -55,10 +65,10 @@ jobs:
           grep -q '^CONFIG_SHADOW_CALL_STACK=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_KERNEL_LZ4=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
 
-      - name: Build Kirisakura kernel with Android 10 toolchain
+      - name: Build kernel with AnyKernel3
         uses: dabao1955/kernel_build_action@v1.10.2
         with:
-          kernel-url: ${{ github.workspace }}
+          kernel-url: ${{ env.KERNEL_WORKDIR }}
           kernel-branch: kirisakura
           config: b1c1_defconfig
           arch: arm64
@@ -85,7 +95,7 @@ jobs:
           echo "KERNEL_IMAGE=$KERNEL" >> "$GITHUB_ENV"
           echo "DTBO_IMAGE=$DTBO" >> "$GITHUB_ENV"
 
-      - name: Build flash-ready Osmosis AnyKernel3 package
+      - name: Build flash-ready Pixel 3 AnyKernel3 from Osmosis template
         shell: bash
         run: |
           set -euxo pipefail
@@ -96,29 +106,29 @@ jobs:
           rm -f README.md Image Image.* zImage zImage.* dtb dtb.img dtbo.img anykernel.sh
           cp "$KERNEL_IMAGE" ./Image.lz4-dtb
           cp "$DTBO_IMAGE" ./dtbo.img
-          cat > anykernel.sh <<'EOF'
-# AnyKernel3 - Bias8145 Kirisakura B1C1 Pixel 3 Android 10
-properties() {
-  kernel.string=Bias8145 Kirisakura B1C1 Android 10 Kernel
-  do.devicecheck=1
-  do.modules=0
-  do.systemless=0
-  do.cleanup=1
-  do.cleanuponabort=0
-  device.name1=blueline
-  supported.versions=10
-  supported.patchlevels=
-  supported.vendorpatchlevels=
-}
-BLOCK=boot;
-IS_SLOT_DEVICE=1;
-RAMDISK_COMPRESSION=auto;
-PATCH_VBMETA_FLAG=auto;
-. tools/ak3-core.sh;
-dump_boot;
-flash_dtbo;
-write_boot;
-EOF
+          {
+            echo '# AnyKernel3 - Bias8145 Kirisakura B1C1 Pixel 3 Android 10'
+            echo 'properties() {'
+            echo "  kernel.string=Bias8145 Kirisakura B1C1 Android 10 Kernel"
+            echo '  do.devicecheck=1'
+            echo '  do.modules=0'
+            echo '  do.systemless=0'
+            echo '  do.cleanup=1'
+            echo '  do.cleanuponabort=0'
+            echo '  device.name1=blueline'
+            echo '  supported.versions=10'
+            echo '  supported.patchlevels='
+            echo '  supported.vendorpatchlevels='
+            echo '}'
+            echo 'BLOCK=boot;'
+            echo 'IS_SLOT_DEVICE=1;'
+            echo 'RAMDISK_COMPRESSION=auto;'
+            echo 'PATCH_VBMETA_FLAG=auto;'
+            echo '. tools/ak3-core.sh;'
+            echo 'dump_boot;'
+            echo 'flash_dtbo;'
+            echo 'write_boot;'
+          } > anykernel.sh
           chmod 0755 anykernel.sh
           grep -q 'device.name1=blueline' anykernel.sh
           grep -q 'supported.versions=10' anykernel.sh
