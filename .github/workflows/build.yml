@@ -88,18 +88,28 @@ jobs:
           release: false
           extra-make-args: '["KCFLAGS=-Wno-missing-braces"]'
 
+      - name: Locate built kernel output
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo '=== Candidate kernel images ==='
+          find "$RUNNER_TEMP" "$GITHUB_WORKSPACE" -type f \( -name 'Image.lz4-dtb' -o -name 'Image.gz-dtb' -o -name 'Image-dtb' -o -name 'zImage' -o -name 'Image' \) -print | tee "$RUNNER_TEMP/kernel-images.txt"
+          KERNEL="$(head -n1 "$RUNNER_TEMP/kernel-images.txt")"
+          test -n "$KERNEL"
+          test -s "$KERNEL"
+          echo "KERNEL_IMAGE=$KERNEL" >> "$GITHUB_ENV"
+          echo "Selected kernel: $KERNEL"
+
       - name: Package AnyKernel3 ZIP
         shell: bash
         run: |
           set -euxo pipefail
-          test -d "$RUNNER_TEMP/b1c1-kernel/build"
-          KERNEL="$(find "$RUNNER_TEMP/b1c1-kernel/build" -type f \( -name 'Image.lz4-dtb' -o -name 'Image.gz-dtb' -o -name 'Image-dtb' -o -name 'zImage' \) -print -quit)"
-          test -n "$KERNEL"
-          test -s "$KERNEL"
+          test -n "$KERNEL_IMAGE"
+          test -s "$KERNEL_IMAGE"
           rm -rf "$RUNNER_TEMP/anykernel-package"
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git "$RUNNER_TEMP/anykernel-package"
           rm -f "$RUNNER_TEMP/anykernel-package"/Image* "$RUNNER_TEMP/anykernel-package"/zImage* "$RUNNER_TEMP/anykernel-package"/dtb* "$RUNNER_TEMP/anykernel-package"/dtbo.img
-          cp "$KERNEL" "$RUNNER_TEMP/anykernel-package/"
+          cp "$KERNEL_IMAGE" "$RUNNER_TEMP/anykernel-package/"
           printf '%s\n' "properties() { '" 'kernel.string=Bias8145 B1C1 Android 10 Kernel' 'do.devicecheck=1' 'device.name1=blueline' 'supported.versions=10' "'; }" '' 'BLOCK=auto;' 'IS_SLOT_DEVICE=1;' 'RAMDISK_COMPRESSION=auto;' 'PATCH_VBMETA_FLAG=auto;' '' '. tools/ak3-core.sh;' 'dump_boot;' 'write_boot;' > "$RUNNER_TEMP/anykernel-package/anykernel.sh"
           chmod 0755 "$RUNNER_TEMP/anykernel-package/anykernel.sh"
           grep -q 'device.name1=blueline' "$RUNNER_TEMP/anykernel-package/anykernel.sh"
