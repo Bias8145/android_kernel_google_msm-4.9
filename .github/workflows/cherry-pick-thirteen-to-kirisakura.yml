@@ -1,0 +1,66 @@
+name: Integrate thirteen-next-2 into kirisakura
+
+on:
+  push:
+    branches:
+      - kirisakura
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: ${{ !contains(github.event.head_commit.message, '[auto-integrate]') }}
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: kirisakura
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch origin kirisakura thirteen-next-2 --prune
+
+      - name: Collect and validate the exact 21-May-to-18-Jul range
+        id: commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t COMMITS < <(git rev-list --reverse --since='2026-05-21T00:00:00Z' --until='2026-07-18T23:59:59Z' origin/thirteen-next-2)
+          echo "count=${#COMMITS[@]}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${COMMITS[@]}" > "$RUNNER_TEMP/thirteen-commits.txt"
+          test "${#COMMITS[@]}" -eq 100
+          echo 'First commit:'
+          head -n1 "$RUNNER_TEMP/thirteen-commits.txt"
+          echo 'Last commit:'
+          tail -n1 "$RUNNER_TEMP/thirteen-commits.txt"
+
+      - name: Cherry-pick all 100 commits oldest to newest
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r sha; do
+            echo "=== cherry-pick $sha ==="
+            git cherry-pick -x "$sha"
+          done < "$RUNNER_TEMP/thirteen-commits.txt"
+          test "$(git rev-list --count HEAD~100..HEAD)" -eq 100
+
+      - name: Verify integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-list --count HEAD~100..HEAD)" -eq 100
+          git log -100 --format='%H %s' > "$RUNNER_TEMP/applied.txt"
+          echo 'Applied commits:'
+          cat "$RUNNER_TEMP/applied.txt"
+          git status --short
+
+      - name: Push integrated kirisakura
+        run: |
+          set -euo pipefail
+          git push origin HEAD:kirisakura
