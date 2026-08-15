@@ -11,7 +11,6 @@ permissions:
 env:
   ARCH: arm64
   DEFCONFIG: b1c1_defconfig
-  KERNEL_WORKDIR: ${{ runner.temp }}/b1c1-kernel
 
 jobs:
   build:
@@ -23,6 +22,16 @@ jobs:
           ref: test
           fetch-depth: 1
           submodules: false
+
+      - name: Copy kernel source to runner temp
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf "$RUNNER_TEMP/b1c1-kernel"
+          mkdir -p "$RUNNER_TEMP/b1c1-kernel"
+          cp -a ./. "$RUNNER_TEMP/b1c1-kernel/"
+          echo "KERNEL_WORKDIR=$RUNNER_TEMP/b1c1-kernel" >> "$GITHUB_ENV"
+          test -f "$RUNNER_TEMP/b1c1-kernel/Makefile"
 
       - name: Install dependencies
         shell: bash
@@ -44,6 +53,7 @@ jobs:
 
       - name: Prepare B1C1 A10 baseline
         shell: bash
+        working-directory: ${{ env.KERNEL_WORKDIR }}
         run: |
           set -euxo pipefail
           chmod +x scripts/prepare_b1c1_a10.sh
@@ -51,6 +61,7 @@ jobs:
 
       - name: Verify B1C1 source
         shell: bash
+        working-directory: ${{ env.KERNEL_WORKDIR }}
         run: |
           set -euxo pipefail
           test -f Makefile
@@ -59,16 +70,6 @@ jobs:
           grep -q '^# CONFIG_LTO_CLANG is not set$' "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_CFI_CLANG=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_SHADOW_CALL_STACK=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
-
-      - name: Stage kernel source outside workspace
-        shell: bash
-        run: |
-          set -euxo pipefail
-          rm -rf "$KERNEL_WORKDIR"
-          mkdir -p "$KERNEL_WORKDIR"
-          cp -a ./. "$KERNEL_WORKDIR/"
-          test -f "$KERNEL_WORKDIR/Makefile"
-          test -f "$KERNEL_WORKDIR/arch/${ARCH}/configs/${DEFCONFIG}"
 
       - name: Build kernel with AnyKernel3
         uses: dabao1955/kernel_build_action@v1.10.2
@@ -86,44 +87,25 @@ jobs:
           release: false
           extra-make-args: '["KCFLAGS=-Wno-missing-braces"]'
 
-      - name: Package final AnyKernel3 ZIP
+      - name: Package AnyKernel3 ZIP
         shell: bash
         run: |
           set -euxo pipefail
-          BUILD_DIR="$KERNEL_WORKDIR/build"
-          test -d "$BUILD_DIR"
-          test -f "$BUILD_DIR/anykernel.sh"
-          test -f "$BUILD_DIR/LICENSE"
-          KERNEL="$(find "$BUILD_DIR" -maxdepth 1 -type f \( -name 'Image*' -o -name 'zImage*' \) -print -quit)"
+          test -d "$RUNNER_TEMP/b1c1-kernel/build"
+          KERNEL="$(find "$RUNNER_TEMP/b1c1-kernel/build" -type f \( -name 'Image.lz4-dtb' -o -name 'Image.gz-dtb' -o -name 'Image-dtb' -o -name 'zImage' \) -print -quit)"
           test -n "$KERNEL"
           test -s "$KERNEL"
-
-          printf '%s\n' \
-            "properties() { '" \
-            'kernel.string=Bias8145 B1C1 Android 10 Kernel' \
-            'do.devicecheck=1' \
-            'device.name1=blueline' \
-            'supported.versions=10' \
-            "'; }" \
-            '' \
-            'BLOCK=auto;' \
-            'IS_SLOT_DEVICE=1;' \
-            'RAMDISK_COMPRESSION=auto;' \
-            'PATCH_VBMETA_FLAG=auto;' \
-            '' \
-            '. tools/ak3-core.sh;' \
-            'dump_boot;' \
-            'write_boot;' > "$BUILD_DIR/anykernel.sh"
-          chmod 0755 "$BUILD_DIR/anykernel.sh"
-
-          grep -q 'device.name1=blueline' "$BUILD_DIR/anykernel.sh"
-          grep -q 'supported.versions=10' "$BUILD_DIR/anykernel.sh"
-          grep -q 'IS_SLOT_DEVICE=1' "$BUILD_DIR/anykernel.sh"
-          grep -q 'dump_boot;' "$BUILD_DIR/anykernel.sh"
-          grep -q 'write_boot;' "$BUILD_DIR/anykernel.sh"
-
+          rm -rf "$RUNNER_TEMP/anykernel-package"
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git "$RUNNER_TEMP/anykernel-package"
+          rm -f "$RUNNER_TEMP/anykernel-package"/Image* "$RUNNER_TEMP/anykernel-package"/zImage* "$RUNNER_TEMP/anykernel-package"/dtb* "$RUNNER_TEMP/anykernel-package"/dtbo.img
+          cp "$KERNEL" "$RUNNER_TEMP/anykernel-package/"
+          printf '%s\n' "properties() { '" 'kernel.string=Bias8145 B1C1 Android 10 Kernel' 'do.devicecheck=1' 'device.name1=blueline' 'supported.versions=10' "'; }" '' 'BLOCK=auto;' 'IS_SLOT_DEVICE=1;' 'RAMDISK_COMPRESSION=auto;' 'PATCH_VBMETA_FLAG=auto;' '' '. tools/ak3-core.sh;' 'dump_boot;' 'write_boot;' > "$RUNNER_TEMP/anykernel-package/anykernel.sh"
+          chmod 0755 "$RUNNER_TEMP/anykernel-package/anykernel.sh"
+          grep -q 'device.name1=blueline' "$RUNNER_TEMP/anykernel-package/anykernel.sh"
+          grep -q 'supported.versions=10' "$RUNNER_TEMP/anykernel-package/anykernel.sh"
+          grep -q 'IS_SLOT_DEVICE=1' "$RUNNER_TEMP/anykernel-package/anykernel.sh"
           rm -f B1C1-A10-AnyKernel3.zip B1C1-A10-AnyKernel3.sha256
-          (cd "$BUILD_DIR" && zip -r -9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" .)
+          (cd "$RUNNER_TEMP/anykernel-package" && zip -r -9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" .)
           unzip -t B1C1-A10-AnyKernel3.zip
           sha256sum B1C1-A10-AnyKernel3.zip | tee B1C1-A10-AnyKernel3.sha256
 
