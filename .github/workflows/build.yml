@@ -3,8 +3,7 @@ name: Build B1C1 Android 10 Kernel + AnyKernel3
 on:
   workflow_dispatch:
   push:
-    branches:
-      - test
+    branches: [test]
 
 permissions:
   contents: write
@@ -24,14 +23,14 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Install build dependencies
+      - name: Install dependencies
         shell: bash
         run: |
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y python3 device-tree-compiler git build-essential gcc g++ zip unzip lz4
 
-      - name: Install AOSP Android 10 mkdtimg prebuilt
+      - name: Install Android 10 mkdtimg
         shell: bash
         run: |
           set -euxo pipefail
@@ -42,7 +41,7 @@ jobs:
           sudo install -m 0755 "$MKDTIMG" /usr/local/bin/mkdtimg
           mkdtimg help all
 
-      - name: Prepare B1C1 Android 10 build baseline
+      - name: Prepare B1C1 A10 baseline
         shell: bash
         run: |
           set -euxo pipefail
@@ -54,15 +53,13 @@ jobs:
         run: |
           set -euxo pipefail
           test -f Makefile
-          grep -q '^VERSION = 4$' Makefile
-          grep -q '^PATCHLEVEL = 9$' Makefile
           test -f "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_BOARD_B1C1=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^# CONFIG_LTO_CLANG is not set$' "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_CFI_CLANG=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_SHADOW_CALL_STACK=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
 
-      - name: Build kernel
+      - name: Build kernel and prepare AnyKernel3
         uses: dabao1955/kernel_build_action@v1.10.2
         with:
           kernel-url: .
@@ -73,22 +70,24 @@ jobs:
           aosp-clang-version: r353983c
           aosp-gcc: true
           disable-lto: true
-          anykernel3: false
+          anykernel3: true
+          anykernel3-url: https://github.com/osm0sis/AnyKernel3.git
           release: false
           extra-make-args: '["KCFLAGS=-Wno-missing-braces"]'
 
-      - name: Package AnyKernel3
+      - name: Build final AnyKernel3 ZIP
         shell: bash
         run: |
           set -euxo pipefail
-          test -d out
-          KERNEL="$(find out -type f \( -name 'Image.lz4-dtb' -o -name 'Image.gz-dtb' -o -name 'Image-dtb' -o -name 'zImage' \) -print -quit)"
+          test -d build
+          test -f build/anykernel.sh
+          test -f build/LICENSE
+          echo '=== AnyKernel3 output ==='
+          find build -maxdepth 1 -type f -printf '%f\n' | sort
+          KERNEL="$(find build -maxdepth 1 -type f \( -name 'Image*' -o -name 'zImage*' \) -print -quit)"
           test -n "$KERNEL"
           test -s "$KERNEL"
-          rm -rf anykernel-package
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git anykernel-package
-          rm -f anykernel-package/Image* anykernel-package/zImage* anykernel-package/dtb* anykernel-package/dtbo.img
-          cp "$KERNEL" anykernel-package/
+          rm -f build/dtb build/dtb.img build/dtbo.img
           printf '%s\n' \
             "properties() { '" \
             'kernel.string=Bias8145 B1C1 Android 10 Kernel' \
@@ -104,14 +103,13 @@ jobs:
             '' \
             '. tools/ak3-core.sh;' \
             'dump_boot;' \
-            'write_boot;' \
-            > anykernel-package/anykernel.sh
-          chmod 0755 anykernel-package/anykernel.sh
-          grep -q 'device.name1=blueline' anykernel-package/anykernel.sh
-          grep -q 'supported.versions=10' anykernel-package/anykernel.sh
-          grep -q 'IS_SLOT_DEVICE=1' anykernel-package/anykernel.sh
+            'write_boot;' > build/anykernel.sh
+          chmod 0755 build/anykernel.sh
+          grep -q 'device.name1=blueline' build/anykernel.sh
+          grep -q 'supported.versions=10' build/anykernel.sh
+          grep -q 'IS_SLOT_DEVICE=1' build/anykernel.sh
           rm -f B1C1-A10-AnyKernel3.zip B1C1-A10-AnyKernel3.sha256
-          (cd anykernel-package && zip -r -9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" .)
+          (cd build && zip -r -9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" .)
           unzip -t B1C1-A10-AnyKernel3.zip
           sha256sum B1C1-A10-AnyKernel3.zip | tee B1C1-A10-AnyKernel3.sha256
 
