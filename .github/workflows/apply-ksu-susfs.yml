@@ -28,8 +28,6 @@ jobs:
           git fetch origin kirisakura --prune
           git checkout -B kirisakura origin/kirisakura
 
-          # GitHub's commits API is the source of truth for the requested date window.
-          # The API returns newest -> oldest, so reverse it to apply oldest -> newest.
           mapfile -t ALL < <(
             curl -fsSL \
               -H "Accept: application/vnd.github+json" \
@@ -43,21 +41,52 @@ jobs:
           test "${#ALL[@]}" -gt 0
 
           : > /tmp/applied.txt
+          : > /tmp/skipped.txt
+
           for c in "${ALL[@]}"; do
             echo "=== APPLY $c ==="
             git show -s --format='%H%n%aI%n%cI%n%s' "$c"
-            if ! git cherry-pick -x "$c"; then
-              echo "CONFLICT while applying $c"
-              git status --short
+
+            if git cherry-pick -x "$c"; then
+              printf '%s %s\n' "$c" "$(git show -s --format=%s HEAD)" >> /tmp/applied.txt
+              continue
+            fi
+
+            echo "=== CONFLICT: resolving in favor of incoming thirteen-next-2 commit ==="
+            git status --short
+            mapfile -t CONFLICTS < <(git diff --name-only --diff-filter=U)
+            if [ "${#CONFLICTS[@]}" -eq 0 ]; then
+              echo "Cherry-pick failed without unresolved paths"
               git cherry-pick --abort || true
               exit 1
             fi
-            printf '%s %s\n' "$c" "$(git show -s --format=%s "$c")" >> /tmp/applied.txt
+
+            for path in "${CONFLICTS[@]}"; do
+              echo "Resolving $path with incoming commit"
+              git checkout --theirs -- "$path"
+              git add -- "$path"
+            done
+
+            if git diff --cached --quiet; then
+              echo "Commit became empty after conflict resolution; recording as skipped"
+              git cherry-pick --abort || true
+              printf '%s %s\n' "$c" "$(git show -s --format=%s "$c")" >> /tmp/skipped.txt
+              continue
+            fi
+
+            GIT_EDITOR=true git cherry-pick --continue
+            printf '%s %s\n' "$c" "$(git show -s --format=%s HEAD)" >> /tmp/applied.txt
           done
 
           echo '=== APPLIED COMMITS ==='
           cat /tmp/applied.txt
-          test "$(wc -l < /tmp/applied.txt)" -eq "${#ALL[@]}"
+          echo '=== EMPTY COMMITS ==='
+          cat /tmp/skipped.txt || true
+          applied=$(wc -l < /tmp/applied.txt)
+          skipped=$(wc -l < /tmp/skipped.txt)
+          total=$((applied + skipped))
+          echo "Applied: $applied / Skipped-empty: $skipped / Total: $total"
+          test "$total" -eq "${#ALL[@]}"
 
           echo '=== VERIFY RESULT ==='
           git status --short
