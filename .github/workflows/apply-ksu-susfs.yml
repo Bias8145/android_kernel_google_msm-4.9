@@ -2,6 +2,8 @@ name: Apply KSU Next + SUSFS to Kirisakura
 
 on:
   workflow_dispatch:
+  push:
+    branches: [kirisakura]
 
 permissions:
   contents: write
