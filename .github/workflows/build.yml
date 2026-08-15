@@ -16,7 +16,14 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Install Android DT tools
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: test
+          fetch-depth: 1
+          submodules: false
+
+      - name: Install Android DT build dependencies
         shell: bash
         run: |
           set -euxo pipefail
@@ -27,6 +34,18 @@ jobs:
           test -x "$USER_BIN/mkdtimg"
           echo "$USER_BIN" >> "$GITHUB_PATH"
           "$USER_BIN/mkdtimg" --help
+
+      - name: Verify B1C1 source before action
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f Makefile
+          grep -q '^VERSION = 4$' Makefile
+          grep -q '^PATCHLEVEL = 9$' Makefile
+          test -f "arch/${ARCH}/configs/${DEFCONFIG}"
+          grep -q '^CONFIG_BOARD_B1C1=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
+          echo "Source: $(git rev-parse HEAD)"
+          echo "Defconfig: ${DEFCONFIG}"
 
       - name: Build kernel with kernel_build_action
         uses: dabao1955/kernel_build_action@main
