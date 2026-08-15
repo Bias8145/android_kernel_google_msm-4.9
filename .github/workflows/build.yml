@@ -11,6 +11,7 @@ permissions:
 env:
   ARCH: arm64
   DEFCONFIG: b1c1_defconfig
+  KERNEL_WORKDIR: ${{ runner.temp }}/b1c1-kernel
 
 jobs:
   build:
@@ -59,10 +60,20 @@ jobs:
           grep -q '^CONFIG_CFI_CLANG=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_SHADOW_CALL_STACK=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
 
+      - name: Stage kernel source outside workspace
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf "$KERNEL_WORKDIR"
+          mkdir -p "$KERNEL_WORKDIR"
+          cp -a ./. "$KERNEL_WORKDIR/"
+          test -f "$KERNEL_WORKDIR/Makefile"
+          test -f "$KERNEL_WORKDIR/arch/${ARCH}/configs/${DEFCONFIG}"
+
       - name: Build kernel with AnyKernel3
         uses: dabao1955/kernel_build_action@v1.10.2
         with:
-          kernel-url: .
+          kernel-url: ${{ env.KERNEL_WORKDIR }}
           config: b1c1_defconfig
           arch: arm64
           android-version: 10
@@ -79,12 +90,14 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          test -d build
-          test -f build/anykernel.sh
-          test -f build/LICENSE
-          KERNEL="$(find build -maxdepth 1 -type f \( -name 'Image*' -o -name 'zImage*' \) -print -quit)"
+          BUILD_DIR="$KERNEL_WORKDIR/build"
+          test -d "$BUILD_DIR"
+          test -f "$BUILD_DIR/anykernel.sh"
+          test -f "$BUILD_DIR/LICENSE"
+          KERNEL="$(find "$BUILD_DIR" -maxdepth 1 -type f \( -name 'Image*' -o -name 'zImage*' \) -print -quit)"
           test -n "$KERNEL"
           test -s "$KERNEL"
+
           printf '%s\n' \
             "properties() { '" \
             'kernel.string=Bias8145 B1C1 Android 10 Kernel' \
@@ -100,13 +113,17 @@ jobs:
             '' \
             '. tools/ak3-core.sh;' \
             'dump_boot;' \
-            'write_boot;' > build/anykernel.sh
-          chmod 0755 build/anykernel.sh
-          grep -q 'device.name1=blueline' build/anykernel.sh
-          grep -q 'supported.versions=10' build/anykernel.sh
-          grep -q 'IS_SLOT_DEVICE=1' build/anykernel.sh
+            'write_boot;' > "$BUILD_DIR/anykernel.sh"
+          chmod 0755 "$BUILD_DIR/anykernel.sh"
+
+          grep -q 'device.name1=blueline' "$BUILD_DIR/anykernel.sh"
+          grep -q 'supported.versions=10' "$BUILD_DIR/anykernel.sh"
+          grep -q 'IS_SLOT_DEVICE=1' "$BUILD_DIR/anykernel.sh"
+          grep -q 'dump_boot;' "$BUILD_DIR/anykernel.sh"
+          grep -q 'write_boot;' "$BUILD_DIR/anykernel.sh"
+
           rm -f B1C1-A10-AnyKernel3.zip B1C1-A10-AnyKernel3.sha256
-          (cd build && zip -r -9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" .)
+          (cd "$BUILD_DIR" && zip -r -9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" .)
           unzip -t B1C1-A10-AnyKernel3.zip
           sha256sum B1C1-A10-AnyKernel3.zip | tee B1C1-A10-AnyKernel3.sha256
 
