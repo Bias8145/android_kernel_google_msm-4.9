@@ -89,7 +89,9 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add fs/proc/task_mmu.c drivers/tty/serial/msm_geni_serial.c
-          git add -u -- .gitmodules || true
+          if [ -e .gitmodules ]; then
+            git add -u -- .gitmodules
+          fi
           if ! git diff --cached --quiet; then
             git commit -m 'ci: stage Release_S_2 build compatibility fixes'
           fi
@@ -140,7 +142,7 @@ jobs:
           {
             echo '# AnyKernel3 - Bias8145 Kirisakura Release_S_2 B1C1 Pixel 3/3 XL'
             echo 'properties() {'
-            echo "  kernel.string=Bias8145 Kirisakura Release_S_2 B1C1 Kernel"
+            echo '  kernel.string=Bias8145 Kirisakura Release_S_2 B1C1 Kernel'
             echo '  do.devicecheck=1'
             echo '  do.modules=0'
             echo '  do.systemless=0'
@@ -183,7 +185,7 @@ jobs:
       - name: Upload flash-ready AnyKernel3
         uses: actions/upload-artifact@v4
         with:
-          name: Kirisakura-Release-S_2-B1C1-AnyKernel3-ready
+          name: Kirisakura-Release_S_2-B1C1-AnyKernel3-ready
           path: |
             Kirisakura-Release-S_2-B1C1-AnyKernel3.zip
             Kirisakura-Release-S_2-B1C1-AnyKernel3.sha256
