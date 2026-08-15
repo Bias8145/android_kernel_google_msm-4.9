@@ -72,25 +72,28 @@ jobs:
         working-directory: ${{ env.KERNEL_WORKDIR }}
         run: |
           set -euxo pipefail
-
-          # Release_S_2 carries the original procfs reporting code, but this
-          # fork's mm API no longer exposes nr_ptes/mm_nr_pmds. Keep the
-          # VmPTE/VmPMD fields present while avoiding unavailable APIs.
           perl -0pi -e 's/ptes = PTRS_PER_PTE \* sizeof\(pte_t\) \* atomic_long_read\(&mm->nr_ptes\);/ptes = 0;/g; s/pmds = PTRS_PER_PMD \* sizeof\(pmd_t\) \* mm_nr_pmds\(mm\);/pmds = 0;/g' fs/proc/task_mmu.c
-
-          # msm_geni_console_port is an array; initialize the mutex belonging
-          # to the current console-port element.
           perl -0pi -e 's/mutex_init\(&msm_geni_console_port\.ioctl_mutex\);/mutex_init\(&msm_geni_console_port[i].ioctl_mutex\);/g' drivers/tty/serial/msm_geni_serial.c
-
-          # KSU-Next is already embedded in this source tree. Do not let the
-          # build action attempt to recurse into a stale/missing submodule URL.
           rm -f .gitmodules
           rm -rf .git/modules/KernelSU-Next
-
           grep -n 'ptes = 0;' fs/proc/task_mmu.c
           grep -n 'pmds = 0;' fs/proc/task_mmu.c
           grep -n 'msm_geni_console_port\[i\]\.ioctl_mutex' drivers/tty/serial/msm_geni_serial.c
           test ! -f .gitmodules
+
+      - name: Stage fixes for kernel_build_action
+        shell: bash
+        working-directory: ${{ env.KERNEL_WORKDIR }}
+        run: |
+          set -euxo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add fs/proc/task_mmu.c drivers/tty/serial/msm_geni_serial.c .gitmodules
+          if ! git diff --cached --quiet; then
+            git commit -m 'ci: stage Release_S_2 build compatibility fixes'
+          fi
+          git status --short
+          git log -1 --oneline
 
       - name: Build Kirisakura Release_S_2 kernel with AnyKernel3
         uses: dabao1955/kernel_build_action@v1.10.2
