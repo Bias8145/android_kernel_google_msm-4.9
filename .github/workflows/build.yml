@@ -116,7 +116,7 @@ jobs:
           grep -q 'supported.versions=10' "$RUNNER_TEMP/anykernel-package/anykernel.sh"
           grep -q 'IS_SLOT_DEVICE=1' "$RUNNER_TEMP/anykernel-package/anykernel.sh"
           rm -f B1C1-A10-AnyKernel3.zip B1C1-A10-AnyKernel3.sha256
-          (cd "$RUNNER_TEMP/anykernel-package" && zip -r -9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" .)
+          (cd "$RUNNER_TEMP/anykernel-package" && zip -r -9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" . -x '.git/*')
           unzip -t B1C1-A10-AnyKernel3.zip
           sha256sum B1C1-A10-AnyKernel3.zip | tee B1C1-A10-AnyKernel3.sha256
 
@@ -127,3 +127,19 @@ jobs:
           path: |
             B1C1-A10-AnyKernel3.zip
             B1C1-A10-AnyKernel3.sha256
+
+      - name: Publish GitHub Release
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          TAG="b1c1-a10-test-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" \
+            B1C1-A10-AnyKernel3.zip \
+            B1C1-A10-AnyKernel3.sha256 \
+            --target "$GITHUB_SHA" \
+            --title "B1C1 Android 10 Kernel ${GITHUB_RUN_NUMBER}" \
+            --notes "B1C1 Android 10 kernel build from branch test. Built with b1c1_defconfig and packaged as AnyKernel3. This is a test build for Stock Pixel 3 Android 10 compatibility; boot compatibility is not yet guaranteed." \
+            --prerelease
