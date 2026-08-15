@@ -81,37 +81,72 @@ jobs:
           release: false
           extra-make-args: '["KCFLAGS=-Wno-missing-braces"]'
 
-      - name: Locate AnyKernel3 output
-        shell: bash
-        run: |
-          set -euxo pipefail
-          echo '=== ZIP outputs ==='
-          find . -type f -iname '*.zip' -print
-          ZIP="$(find . -type f -iname '*.zip' | head -n1)"
-          test -n "$ZIP"
-          test -s "$ZIP"
-          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
-
       - name: Finalize B1C1 Stock A10 AnyKernel3 package
         shell: bash
         run: |
           set -euxo pipefail
-          test -n "${ZIP:-}"
-          unzip -t "$ZIP"
-          unzip -l "$ZIP" | sed -n '1,160p'
-          unzip -p "$ZIP" anykernel.sh > "$RUNNER_TEMP/anykernel.sh"
+          test -d build
+          test -f build/anykernel.sh
+          test -f build/LICENSE
+
+          echo '=== Kernel payload ==='
+          find build -maxdepth 1 -type f -printf '%f\n' | sort
+          KERNEL="$(find build -maxdepth 1 -type f \( -name 'Image*' -o -name 'zImage*' \) | head -n1)"
+          test -n "$KERNEL"
+          test -s "$KERNEL"
+
+          # The Stock A10 boot image keeps its own ramdisk/DTB/DTBO.
+          # Remove DTB/DTBO payloads produced by the action from this first
+          # compatibility package so AnyKernel3 only replaces the kernel.
+          rm -f build/dtbo.img build/dtb build/dtb.img
+
+          cat > build/anykernel.sh <<'EOF'
+properties() { '
+kernel.string=Bias8145 B1C1 Android 10 Kernel
+kernel.supported=Stock Android 10 / Pixel 3 B1C1 (blueline)
+do.devicecheck=1
+device.name1=blueline
+supported.versions=10
+'; }
+
+BLOCK=auto;
+IS_SLOT_DEVICE=1;
+RAMDISK_COMPRESSION=auto;
+PATCH_VBMETA_FLAG=auto;
+
+. tools/ak3-core.sh;
+dump_boot;
+write_boot;
+EOF
+
+          chmod 0755 build/anykernel.sh
+          grep -q 'device.name1=blueline' build/anykernel.sh
+          grep -q 'supported.versions=10' build/anykernel.sh
+          grep -q 'IS_SLOT_DEVICE=1' build/anykernel.sh
+          grep -q 'BLOCK=auto;' build/anykernel.sh
+          grep -q 'dump_boot;' build/anykernel.sh
+          grep -q 'write_boot;' build/anykernel.sh
+
+          echo '=== AnyKernel3 files ==='
+          find build -maxdepth 2 -type f -printf '%p\n' | sort | head -300
+
+          rm -f B1C1-A10-AnyKernel3.zip B1C1-A10-AnyKernel3.sha256
+          (cd build && zip -r -9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" .)
+          unzip -t B1C1-A10-AnyKernel3.zip
+          unzip -l B1C1-A10-AnyKernel3.zip | sed -n '1,180p'
+          unzip -p B1C1-A10-AnyKernel3.zip anykernel.sh > "$RUNNER_TEMP/anykernel.sh"
           grep -q 'device.name1=blueline' "$RUNNER_TEMP/anykernel.sh"
           grep -q 'supported.versions=10' "$RUNNER_TEMP/anykernel.sh"
           grep -q 'IS_SLOT_DEVICE=1' "$RUNNER_TEMP/anykernel.sh"
-          grep -q 'BLOCK=' "$RUNNER_TEMP/anykernel.sh"
-          sha256sum "$ZIP" | tee "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.sha256"
+          sha256sum B1C1-A10-AnyKernel3.zip | tee B1C1-A10-AnyKernel3.sha256
+          echo "ZIP=$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" >> "$GITHUB_ENV"
 
       - name: Upload AnyKernel3 artifact
         uses: actions/upload-artifact@v4
         with:
           name: B1C1-A10-AnyKernel3
           path: |
-            ${{ env.ZIP }}
+            B1C1-A10-AnyKernel3.zip
             B1C1-A10-AnyKernel3.sha256
           if-no-files-found: error
 
@@ -124,7 +159,7 @@ jobs:
           set -euxo pipefail
           TAG="b1c1-a10-$(date -u +%Y%m%d-%H%M%S)"
           gh release create "$TAG" \
-            "$GITHUB_WORKSPACE/$ZIP" \
+            "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" \
             "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.sha256" \
             --target test \
             --title "B1C1 Android 10 Kernel $TAG" \
