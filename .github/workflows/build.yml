@@ -104,7 +104,7 @@ jobs:
           echo "Selected kernel: $KERNEL"
           echo "Selected DTBO: $DTBO"
 
-      - name: Build flash-ready Pixel 3 AnyKernel3
+      - name: Build flash-ready Pixel 3 AnyKernel3 from Osmosis template
         shell: bash
         run: |
           set -euxo pipefail
@@ -118,42 +118,57 @@ jobs:
           cp "$DTBO_IMAGE" ./dtbo.img
 
           cat > anykernel.sh <<'AK3'
-          ### AnyKernel3 - Bias8145 B1C1 Pixel 3 Android 10
-          properties() { '
-          kernel.string=Bias8145 B1C1 Android 10 Kernel
-          do.devicecheck=1
-          do.modules=0
-          do.systemless=0
-          do.cleanup=1
-          do.cleanuponabort=0
-          device.name1=blueline
-          supported.versions=10
-          supported.patchlevels=
-          '; }
+### AnyKernel3 - Bias8145 B1C1 Pixel 3 Android 10
+## osm0sis @ xda-developers
 
-          boot_attributes() {
-          set_perm_recursive 0 0 755 644 $RAMDISK/*;
-          set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
-          }
+### AnyKernel setup
+properties() { '
+kernel.string=Bias8145 B1C1 Android 10 Kernel
+do.devicecheck=1
+do.modules=0
+do.systemless=0
+do.cleanup=1
+do.cleanuponabort=0
+device.name1=blueline
+supported.versions=10
+supported.patchlevels=
+supported.vendorpatchlevels=
+'; }
 
-          BLOCK=boot;
-          IS_SLOT_DEVICE=1;
-          RAMDISK_COMPRESSION=auto;
-          PATCH_VBMETA_FLAG=auto;
+### AnyKernel install
+## boot files attributes
+boot_attributes() {
+set_perm_recursive 0 0 755 644 $RAMDISK/*;
+set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
+}
 
-          . tools/ak3-core.sh;
+## boot shell variables
+BLOCK=boot;
+IS_SLOT_DEVICE=1;
+RAMDISK_COMPRESSION=auto;
+PATCH_VBMETA_FLAG=auto;
 
-          dump_boot;
-          flash_dtbo;
-          write_boot;
-          AK3
+## import functions/variables and setup patching
+. tools/ak3-core.sh;
+
+## boot install
+dump_boot;
+flash_dtbo;
+write_boot;
+## end boot install
+AK3
+
           chmod 0755 anykernel.sh
-
+          bash -n anykernel.sh
+          test -f tools/ak3-core.sh
+          test -x tools/ak3-core.sh
           grep -q 'device.name1=blueline' anykernel.sh
           grep -q 'supported.versions=10' anykernel.sh
           grep -q '^BLOCK=boot;' anykernel.sh
           grep -q '^IS_SLOT_DEVICE=1;' anykernel.sh
+          grep -q '^RAMDISK_COMPRESSION=auto;' anykernel.sh
           grep -q 'flash_dtbo;' anykernel.sh
+          grep -q 'write_boot;' anykernel.sh
           test -s Image.lz4-dtb
           test -s dtbo.img
 
@@ -163,7 +178,7 @@ jobs:
           zip -r9 "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.zip" . -x '.git/*' '.github/*' 'README.md' '*placeholder*'
           cd "$GITHUB_WORKSPACE"
           unzip -t B1C1-A10-AnyKernel3.zip
-          unzip -l B1C1-A10-AnyKernel3.zip | grep -E 'Image\.lz4-dtb|dtbo\.img|anykernel\.sh|tools/ak3-core\.sh'
+          unzip -l B1C1-A10-AnyKernel3.zip | grep -E 'Image\.lz4-dtb|dtbo\.img|anykernel\.sh|tools/ak3-core\.sh|META-INF/com/google/android/update-binary|LICENSE'
           sha256sum B1C1-A10-AnyKernel3.zip | tee B1C1-A10-AnyKernel3.sha256
 
       - name: Upload flash-ready AnyKernel3
@@ -188,4 +203,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --prerelease \
             --title "B1C1 Android 10 Kernel ${GITHUB_RUN_NUMBER}" \
-            --notes "B1C1 Pixel 3 (blueline) Android 10 test kernel. Built from branch test with b1c1_defconfig. AnyKernel3 package includes Image.lz4-dtb and dtbo.img. Test on a bootable/recoverable device only; boot compatibility is not guaranteed until hardware validation."
+            --notes "B1C1 Pixel 3 (blueline) Android 10 test kernel. Built from branch test with b1c1_defconfig. AnyKernel3 package follows the Osmosis template and includes Image.lz4-dtb plus dtbo.img. Boot compatibility must be hardware validated before normal use."
