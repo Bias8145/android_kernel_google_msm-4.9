@@ -45,6 +45,13 @@ jobs:
           command -v mkdtimg
           mkdtimg help all
 
+      - name: Prepare B1C1 Android 10 config
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x scripts/prepare_b1c1_a10.sh
+          scripts/prepare_b1c1_a10.sh
+
       - name: Verify B1C1 source
         shell: bash
         run: |
@@ -54,14 +61,15 @@ jobs:
           grep -q '^PATCHLEVEL = 9$' Makefile
           test -f "arch/${ARCH}/configs/${DEFCONFIG}"
           grep -q '^CONFIG_BOARD_B1C1=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
+          grep -q '^CONFIG_LTO_CLANG=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
+          grep -q '^CONFIG_CFI_CLANG=y$' "arch/${ARCH}/configs/${DEFCONFIG}"
           echo "Commit: $(git rev-parse HEAD)"
           echo "Defconfig: ${DEFCONFIG}"
 
       - name: Build kernel with kernel_build_action
         uses: dabao1955/kernel_build_action@main
         with:
-          kernel-url: https://github.com/Bias8145/android_kernel_google_msm-4.9
-          kernel-branch: test
+          kernel-url: .
           config: b1c1_defconfig
           arch: arm64
           android-version: 10
