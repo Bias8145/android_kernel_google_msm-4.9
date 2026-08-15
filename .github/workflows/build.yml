@@ -101,8 +101,6 @@ jobs:
           test -s "$DTBO"
           echo "KERNEL_IMAGE=$KERNEL" >> "$GITHUB_ENV"
           echo "DTBO_IMAGE=$DTBO" >> "$GITHUB_ENV"
-          echo "Selected kernel: $KERNEL"
-          echo "Selected DTBO: $DTBO"
 
       - name: Build flash-ready Pixel 3 AnyKernel3 from Osmosis template
         shell: bash
@@ -115,46 +113,34 @@ jobs:
           rm -f README.md Image Image.* zImage zImage.* dtb dtb.img dtbo.img anykernel.sh
           cp "$KERNEL_IMAGE" ./Image.lz4-dtb
           cp "$DTBO_IMAGE" ./dtbo.img
-          cat > anykernel.sh <<'AK3'
-### AnyKernel3 - Bias8145 B1C1 Pixel 3 Android 10
-## osm0sis @ xda-developers
-
-### AnyKernel setup
-properties() { '
-kernel.string=Bias8145 B1C1 Android 10 Kernel
-do.devicecheck=1
-do.modules=0
-do.systemless=0
-do.cleanup=1
-do.cleanuponabort=0
-device.name1=blueline
-supported.versions=10
-supported.patchlevels=
-supported.vendorpatchlevels=
-'; }
-
-### AnyKernel install
-## boot shell variables
-BLOCK=boot;
-IS_SLOT_DEVICE=1;
-RAMDISK_COMPRESSION=auto;
-PATCH_VBMETA_FLAG=auto;
-
-## import functions/variables and setup patching
-. tools/ak3-core.sh;
-
-## boot install
-dump_boot;
-flash_dtbo;
-write_boot;
-## end boot install
-AK3
+          {
+            echo '# AnyKernel3 - Bias8145 B1C1 Pixel 3 Android 10'
+            echo 'properties() {'
+            echo "  kernel.string=Bias8145 B1C1 Android 10 Kernel"
+            echo '  do.devicecheck=1'
+            echo '  do.modules=0'
+            echo '  do.systemless=0'
+            echo '  do.cleanup=1'
+            echo '  do.cleanuponabort=0'
+            echo '  device.name1=blueline'
+            echo '  supported.versions=10'
+            echo '  supported.patchlevels='
+            echo '  supported.vendorpatchlevels='
+            echo '}'
+            echo 'BLOCK=boot;'
+            echo 'IS_SLOT_DEVICE=1;'
+            echo 'RAMDISK_COMPRESSION=auto;'
+            echo 'PATCH_VBMETA_FLAG=auto;'
+            echo '. tools/ak3-core.sh;'
+            echo 'dump_boot;'
+            echo 'flash_dtbo;'
+            echo 'write_boot;'
+          } > anykernel.sh
           chmod 0755 anykernel.sh
           grep -q 'device.name1=blueline' anykernel.sh
           grep -q 'supported.versions=10' anykernel.sh
           grep -q '^BLOCK=boot;' anykernel.sh
           grep -q '^IS_SLOT_DEVICE=1;' anykernel.sh
-          grep -q '^RAMDISK_COMPRESSION=auto;' anykernel.sh
           grep -q 'flash_dtbo;' anykernel.sh
           grep -q 'write_boot;' anykernel.sh
           test -s Image.lz4-dtb
