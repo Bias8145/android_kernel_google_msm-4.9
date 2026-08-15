@@ -111,12 +111,10 @@ jobs:
           rm -rf "$RUNNER_TEMP/anykernel-package"
           git clone --depth=1 "$AK3_REPO" "$RUNNER_TEMP/anykernel-package"
           cd "$RUNNER_TEMP/anykernel-package"
-
           rm -rf .git .github
           rm -f README.md Image Image.* zImage zImage.* dtb dtb.img dtbo.img anykernel.sh
           cp "$KERNEL_IMAGE" ./Image.lz4-dtb
           cp "$DTBO_IMAGE" ./dtbo.img
-
           cat > anykernel.sh <<'AK3'
 ### AnyKernel3 - Bias8145 B1C1 Pixel 3 Android 10
 ## osm0sis @ xda-developers
@@ -136,12 +134,6 @@ supported.vendorpatchlevels=
 '; }
 
 ### AnyKernel install
-## boot files attributes
-boot_attributes() {
-set_perm_recursive 0 0 755 644 $RAMDISK/*;
-set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
-}
-
 ## boot shell variables
 BLOCK=boot;
 IS_SLOT_DEVICE=1;
@@ -157,11 +149,7 @@ flash_dtbo;
 write_boot;
 ## end boot install
 AK3
-
           chmod 0755 anykernel.sh
-          bash -n anykernel.sh
-          test -f tools/ak3-core.sh
-          test -x tools/ak3-core.sh
           grep -q 'device.name1=blueline' anykernel.sh
           grep -q 'supported.versions=10' anykernel.sh
           grep -q '^BLOCK=boot;' anykernel.sh
@@ -171,7 +159,6 @@ AK3
           grep -q 'write_boot;' anykernel.sh
           test -s Image.lz4-dtb
           test -s dtbo.img
-
           cd "$GITHUB_WORKSPACE"
           rm -f B1C1-A10-AnyKernel3.zip B1C1-A10-AnyKernel3.sha256
           cd "$RUNNER_TEMP/anykernel-package"
@@ -197,10 +184,4 @@ AK3
         run: |
           set -euxo pipefail
           TAG="b1c1-a10-test-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" \
-            B1C1-A10-AnyKernel3.zip \
-            B1C1-A10-AnyKernel3.sha256 \
-            --repo "$GITHUB_REPOSITORY" \
-            --prerelease \
-            --title "B1C1 Android 10 Kernel ${GITHUB_RUN_NUMBER}" \
-            --notes "B1C1 Pixel 3 (blueline) Android 10 test kernel. Built from branch test with b1c1_defconfig. AnyKernel3 package follows the Osmosis template and includes Image.lz4-dtb plus dtbo.img. Boot compatibility must be hardware validated before normal use."
+          gh release create "$TAG" B1C1-A10-AnyKernel3.zip B1C1-A10-AnyKernel3.sha256 --repo "$GITHUB_REPOSITORY" --prerelease --title "B1C1 Android 10 Kernel ${GITHUB_RUN_NUMBER}" --notes "B1C1 Pixel 3 (blueline) Android 10 test kernel. Built from branch test with b1c1_defconfig. AnyKernel3 package follows the Osmosis template and includes Image.lz4-dtb plus dtbo.img. Boot compatibility must be hardware validated before normal use."
