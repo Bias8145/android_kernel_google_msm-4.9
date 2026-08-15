@@ -75,6 +75,7 @@ jobs:
         uses: dabao1955/kernel_build_action@v1.10.2
         with:
           kernel-url: ${{ env.KERNEL_WORKDIR }}
+          kernel-branch: test
           config: b1c1_defconfig
           arch: arm64
           android-version: 10
