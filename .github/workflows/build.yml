@@ -28,12 +28,21 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y python3 python3-pip device-tree-compiler
-          python3 -m pip install --user --upgrade libufdt
-          USER_BIN="$HOME/.local/bin"
-          test -x "$USER_BIN/mkdtimg"
-          echo "$USER_BIN" >> "$GITHUB_PATH"
-          "$USER_BIN/mkdtimg" --help
+          sudo apt-get install -y python3 python3-pip device-tree-compiler git build-essential
+
+      - name: Build mkdtimg from AOSP libufdt
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth=1 https://android.googlesource.com/platform/system/libufdt "$RUNNER_TEMP/libufdt"
+          cd "$RUNNER_TEMP/libufdt"
+          test -f Makefile
+          make -j"$(nproc)"
+          MKDTIMG=$(find . -type f -name mkdtimg -perm -111 | head -n1)
+          test -n "$MKDTIMG"
+          sudo install -m 0755 "$MKDTIMG" /usr/local/bin/mkdtimg
+          command -v mkdtimg
+          mkdtimg --help
 
       - name: Verify B1C1 source before action
         shell: bash
@@ -67,7 +76,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          echo '--- generated archives ---'
           find . -type f -name '*.zip' -print
           count=$(find . -type f -name '*.zip' | wc -l)
           test "$count" -ge 1
