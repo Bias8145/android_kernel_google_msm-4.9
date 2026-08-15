@@ -89,23 +89,23 @@ jobs:
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git anykernel-package
           rm -f anykernel-package/Image* anykernel-package/zImage* anykernel-package/dtb* anykernel-package/dtbo.img
           cp "$KERNEL" anykernel-package/
-          cat > anykernel-package/anykernel.sh <<'EOF'
-properties() { '
-kernel.string=Bias8145 B1C1 Android 10 Kernel
-do.devicecheck=1
-device.name1=blueline
-supported.versions=10
-'; }
-
-BLOCK=auto;
-IS_SLOT_DEVICE=1;
-RAMDISK_COMPRESSION=auto;
-PATCH_VBMETA_FLAG=auto;
-
-. tools/ak3-core.sh;
-dump_boot;
-write_boot;
-EOF
+          printf '%s\n' \
+            "properties() { '" \
+            'kernel.string=Bias8145 B1C1 Android 10 Kernel' \
+            'do.devicecheck=1' \
+            'device.name1=blueline' \
+            'supported.versions=10' \
+            "'; }" \
+            '' \
+            'BLOCK=auto;' \
+            'IS_SLOT_DEVICE=1;' \
+            'RAMDISK_COMPRESSION=auto;' \
+            'PATCH_VBMETA_FLAG=auto;' \
+            '' \
+            '. tools/ak3-core.sh;' \
+            'dump_boot;' \
+            'write_boot;' \
+            > anykernel-package/anykernel.sh
           chmod 0755 anykernel-package/anykernel.sh
           grep -q 'device.name1=blueline' anykernel-package/anykernel.sh
           grep -q 'supported.versions=10' anykernel-package/anykernel.sh
