@@ -27,7 +27,7 @@ jobs:
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git fetch origin kirisakura thirteen-next-2 --prune
           git checkout -B kirisakura origin/kirisakura
-          mapfile -t ALL < <(git rev-list --reverse --committer='2026-05-21T00:00:00+00:00' --until='2026-07-18T23:59:59+00:00' origin/thirteen-next-2)
+          mapfile -t ALL < <(git log origin/thirteen-next-2 --reverse --format=%H --since='2026-05-21T00:00:00+00:00' --until='2026-07-18T23:59:59+00:00')
           test "${#ALL[@]}" -gt 0
           : > /tmp/applied.txt
           : > /tmp/skipped.txt
