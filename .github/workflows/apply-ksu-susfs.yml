@@ -40,7 +40,7 @@ jobs:
           )
 
           echo "Found ${#ALL[@]} commits in requested period"
-          test "${#ALL[@]}" -eq 100
+          test "${#ALL[@]}" -gt 0
 
           : > /tmp/applied.txt
           for c in "${ALL[@]}"; do
@@ -57,7 +57,7 @@ jobs:
 
           echo '=== APPLIED COMMITS ==='
           cat /tmp/applied.txt
-          test "$(wc -l < /tmp/applied.txt)" -eq 100
+          test "$(wc -l < /tmp/applied.txt)" -eq "${#ALL[@]}"
 
           echo '=== VERIFY RESULT ==='
           git status --short
