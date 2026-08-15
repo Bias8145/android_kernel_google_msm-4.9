@@ -67,7 +67,7 @@ jobs:
           echo "Commit: $(git rev-parse HEAD)"
           echo "Defconfig: ${DEFCONFIG}"
 
-      - name: Build kernel with kernel_build_action
+      - name: Build kernel with native AnyKernel3 packaging
         uses: dabao1955/kernel_build_action@main
         with:
           kernel-url: .
@@ -78,90 +78,38 @@ jobs:
           aosp-clang-version: r353983c
           aosp-gcc: true
           disable-lto: true
-          anykernel3: false
+          anykernel3: true
+          anykernel3-url: https://github.com/osm0sis/AnyKernel3.git
           release: false
           extra-make-args: '["KCFLAGS=-Wno-missing-braces"]'
 
-      - name: Locate and validate kernel outputs
+      - name: Locate and validate AnyKernel3 output
         shell: bash
         run: |
           set -euxo pipefail
-          echo '=== kernel outputs ==='
-          find . -type f \( \
-            -name 'Image' -o \
-            -name 'Image.gz' -o \
-            -name 'Image.gz-dtb' -o \
-            -name 'Image.lz4' -o \
-            -name 'Image.lz4-dtb' -o \
-            -name 'dtbo.img' \
-          \) -print
-
-          KERNEL="$(find . -type f \( -name 'Image.lz4-dtb' -o -name 'Image.gz-dtb' -o -name 'Image.lz4' -o -name 'Image.gz' -o -name 'Image' \) | head -n1)"
-          test -n "$KERNEL"
-          echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
-
-          DTBO="$(find . -type f -name 'dtbo.img' | head -n1)"
-          test -n "$DTBO"
-          test -f "$DTBO"
-          echo "DTBO=$DTBO" >> "$GITHUB_ENV"
-
-      - name: Package with osm0sis AnyKernel3
-        shell: bash
-        run: |
-          set -euxo pipefail
-          AK3="$RUNNER_TEMP/AnyKernel3"
-          rm -rf "$AK3"
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git "$AK3"
-
-          cd "$AK3"
-          rm -rf .git
-
-          cp "$GITHUB_WORKSPACE/$KERNEL" ./kernel.img
-
-          cat > anykernel.sh <<'EOF'
-          ### B1C1 Android 10 AnyKernel3 installer
-          properties() { '
-          kernel.string=B1C1 A10 Kernel by Bias8145
-          do.devicecheck=1
-          do.modules=0
-          do.systemless=1
-          do.cleanup=1
-          do.cleanuponabort=0
-          device.name1=blueline
-          supported.versions=10
-          '; }
-
-          BLOCK=/dev/block/by-name/boot;
-          IS_SLOT_DEVICE=1;
-          RAMDISK_COMPRESSION=auto;
-          PATCH_VBMETA_FLAG=auto;
-
-          . tools/ak3-core.sh;
-
-          dump_boot;
-          write_boot;
-          EOF
-
-          chmod 0755 anykernel.sh
-
-          ZIP_NAME="B1C1-A10-AnyKernel3-$(date -u +%Y%m%d-%H%M).zip"
-          zip -r9 "$GITHUB_WORKSPACE/$ZIP_NAME" . \
-            -x '.git/*' 'README.md' '*placeholder*'
-          test -s "$GITHUB_WORKSPACE/$ZIP_NAME"
-          unzip -t "$GITHUB_WORKSPACE/$ZIP_NAME"
-          unzip -p "$GITHUB_WORKSPACE/$ZIP_NAME" anykernel.sh | grep -q 'device.name1=blueline'
-          unzip -p "$GITHUB_WORKSPACE/$ZIP_NAME" anykernel.sh | grep -q 'IS_SLOT_DEVICE=1'
-          unzip -p "$GITHUB_WORKSPACE/$ZIP_NAME" kernel.img >/dev/null
-          sha256sum "$GITHUB_WORKSPACE/$ZIP_NAME" | tee "$GITHUB_WORKSPACE/$ZIP_NAME.sha256"
-          echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_ENV"
+          echo '=== ZIP outputs ==='
+          find . -type f -iname '*.zip' -print
+          ZIP="$(find . -type f -iname '*.zip' | head -n1)"
+          test -n "$ZIP"
+          test -s "$ZIP"
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+          unzip -t "$ZIP"
+          echo '=== AnyKernel3 contents ==='
+          unzip -l "$ZIP" | sed -n '1,160p'
+          unzip -p "$ZIP" anykernel.sh > "$RUNNER_TEMP/anykernel.sh"
+          grep -q 'device.name1=blueline' "$RUNNER_TEMP/anykernel.sh"
+          grep -q 'IS_SLOT_DEVICE=1' "$RUNNER_TEMP/anykernel.sh"
+          grep -q 'BLOCK=' "$RUNNER_TEMP/anykernel.sh"
+          unzip -p "$ZIP" kernel.img >/dev/null
+          sha256sum "$ZIP" | tee "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.sha256"
 
       - name: Upload AnyKernel3 artifact
         uses: actions/upload-artifact@v4
         with:
           name: B1C1-A10-AnyKernel3
           path: |
-            ${{ env.ZIP_NAME }}
-            ${{ env.ZIP_NAME }}.sha256
+            ${{ env.ZIP }}
+            B1C1-A10-AnyKernel3.sha256
           if-no-files-found: error
 
       - name: Create GitHub Release
@@ -173,8 +121,8 @@ jobs:
           set -euxo pipefail
           TAG="b1c1-a10-$(date -u +%Y%m%d-%H%M%S)"
           gh release create "$TAG" \
-            "$GITHUB_WORKSPACE/$ZIP_NAME" \
-            "$GITHUB_WORKSPACE/$ZIP_NAME.sha256" \
+            "$GITHUB_WORKSPACE/$ZIP" \
+            "$GITHUB_WORKSPACE/B1C1-A10-AnyKernel3.sha256" \
             --target test \
             --title "B1C1 Android 10 Kernel $TAG" \
             --notes "B1C1 Pixel 3 kernel for Stock Android 10. AnyKernel3 package built from the test branch. Boot compatibility is not claimed until hardware boot testing is completed."
